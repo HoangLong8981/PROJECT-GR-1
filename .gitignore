@@ -1,0 +1,20 @@
+# Bảo mật: Không đưa tệp chứa biến môi trường/mật khẩu thật lên Git
+.env
+*.pem
+*.key
+
+# Python cache
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Dữ liệu volume cục bộ của Docker
+postgres_data/
+minio_data/
+prometheus_data/
+grafana_data/
+
+# IDE
+.vscode/
+.idea/

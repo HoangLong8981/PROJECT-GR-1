@@ -1,0 +1,7 @@
+Traffic_Scale,Architecture,Compute_USD,Database_USD,LoadBalancer_USD,Storage_USD,DataTransfer_USD,Monitoring_USD,Total_Monthly_Infra_USD
+1x (Lưu lượng chuẩn - 500 GB/tháng),V1_Baseline_Single_Server,67.74,0.0,0.0,36.0,45.0,5.0,153.74
+1x (Lưu lượng chuẩn - 500 GB/tháng),V2_Target_Well_Architected,42.6,54.0,21.6,17.0,28.0,8.0,171.2
+2x (Lưu lượng tăng gấp 2 - 1.000 GB/tháng),V1_Baseline_Single_Server,135.48,0.0,0.0,60.0,90.0,8.0,293.48
+2x (Lưu lượng tăng gấp 2 - 1.000 GB/tháng),V2_Target_Well_Architected,64.2,54.0,25.4,22.0,52.0,10.0,227.6
+5x (Lưu lượng tăng gấp 5 - 2.500 GB/tháng),V1_Baseline_Single_Server,270.96,0.0,0.0,120.0,225.0,15.0,630.96
+5x (Lưu lượng tăng gấp 5 - 2.500 GB/tháng),V2_Target_Well_Architected,128.5,92.0,36.8,35.0,115.0,15.0,422.3

@@ -1,0 +1,60 @@
+# =============================================================================
+# KIẾN TRÚC CƠ SỞ (BASELINE V1) - MÔ HÌNH 1 MÁY CHỦ DUY NHẤT (SINGLE NODE)
+# Mục đích: Tái hiện hiện trạng ứng dụng Web 3 tầng và CSDL chạy chung trên 1 nút,
+# tồn tại Điểm lỗi đơn (SPOF), tranh chấp tài nguyên CPU/RAM và không có dự phòng.
+# Cách chạy: docker compose -f infra/docker-compose.v1.yml --env-file .env up -d --build
+# =============================================================================
+
+services:
+  # Trong kiến trúc V1, ứng dụng và CSDL chia sẻ tài nguyên hạn chế và không có LB
+  postgres-v1:
+    image: postgres:16-alpine
+    container_name: ecom-v1-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ecom_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ChangeMe_StrongPassword_2026!}
+      POSTGRES_DB: ${POSTGRES_DB:-ecommerce_db}
+    volumes:
+      - ../app/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    # Sai lầm bảo mật điển hình của kiến trúc cũ: mở cổng DB 5432 trực tiếp ra ngoài
+    ports:
+      - "5432:5432"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ecom_user} -d ${POSTGRES_DB:-ecommerce_db}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app-single-node:
+    build:
+      context: ../app
+      dockerfile: Dockerfile
+    container_name: ecom-v1-single-app
+    environment:
+      NODE_ID: "v1-single-server-spof"
+      ARCH_VERSION: "V1-Baseline-Single-Node"
+      POSTGRES_USER: ${POSTGRES_USER:-ecom_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ChangeMe_StrongPassword_2026!}
+      POSTGRES_DB: ${POSTGRES_DB:-ecommerce_db}
+      POSTGRES_HOST: postgres-v1
+      POSTGRES_PORT: 5432
+      STORAGE_MODE: "local-disk"
+      MINIO_PUBLIC_URL: "http://localhost:8080/static"
+      DB_POOL_MIN: 1
+      DB_POOL_MAX: 5
+    ports:
+      - "8080:8000"
+    depends_on:
+      postgres-v1:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    restart: "no"

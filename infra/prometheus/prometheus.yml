@@ -1,0 +1,14 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'ecommerce-app-replicas'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+          - 'app-replica-1:8000'
+          - 'app-replica-2:8000'
+        labels:
+          tier: 'application'
+          architecture: 'v2-well-architected'

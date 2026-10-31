@@ -1,0 +1,81 @@
+{
+  "assumptions": {
+    "region": "ap-southeast-1 (Singapore)",
+    "currency": "USD/month",
+    "baseline_traffic_gb": 500,
+    "storage_images_gb": 200,
+    "db_storage_gb": 100,
+    "pricing_date": "2026-10"
+  },
+  "scenarios": [
+    {
+      "scale_factor": "1x (Lưu lượng chuẩn - 500 GB/tháng)",
+      "v1_single_server": {
+        "compute_ec2": 67.74,
+        "database_rds": 0.0,
+        "load_balancer_alb": 0.0,
+        "storage_ebs_s3": 36.0,
+        "data_transfer_egress": 45.0,
+        "monitoring_backup": 5.0,
+        "total_monthly_usd": 153.74,
+        "estimated_downtime_risk_usd": 600.0
+      },
+      "v2_well_architected": {
+        "compute_ec2": 42.6,
+        "database_rds": 54.0,
+        "load_balancer_alb": 21.6,
+        "storage_ebs_s3": 17.0,
+        "data_transfer_egress": 28.0,
+        "monitoring_backup": 8.0,
+        "total_monthly_usd": 171.2,
+        "estimated_downtime_risk_usd": 25.0
+      }
+    },
+    {
+      "scale_factor": "2x (Lưu lượng tăng gấp 2 - 1.000 GB/tháng)",
+      "v1_single_server": {
+        "compute_ec2": 135.48,
+        "database_rds": 0.0,
+        "load_balancer_alb": 0.0,
+        "storage_ebs_s3": 60.0,
+        "data_transfer_egress": 90.0,
+        "monitoring_backup": 8.0,
+        "total_monthly_usd": 293.48,
+        "estimated_downtime_risk_usd": 1200.0
+      },
+      "v2_well_architected": {
+        "compute_ec2": 64.2,
+        "database_rds": 54.0,
+        "load_balancer_alb": 25.4,
+        "storage_ebs_s3": 22.0,
+        "data_transfer_egress": 52.0,
+        "monitoring_backup": 10.0,
+        "total_monthly_usd": 227.6,
+        "estimated_downtime_risk_usd": 40.0
+      }
+    },
+    {
+      "scale_factor": "5x (Lưu lượng tăng gấp 5 - 2.500 GB/tháng)",
+      "v1_single_server": {
+        "compute_ec2": 270.96,
+        "database_rds": 0.0,
+        "load_balancer_alb": 0.0,
+        "storage_ebs_s3": 120.0,
+        "data_transfer_egress": 225.0,
+        "monitoring_backup": 15.0,
+        "total_monthly_usd": 630.96,
+        "estimated_downtime_risk_usd": 3500.0
+      },
+      "v2_well_architected": {
+        "compute_ec2": 128.5,
+        "database_rds": 92.0,
+        "load_balancer_alb": 36.8,
+        "storage_ebs_s3": 35.0,
+        "data_transfer_egress": 115.0,
+        "monitoring_backup": 15.0,
+        "total_monthly_usd": 422.3,
+        "estimated_downtime_risk_usd": 80.0
+      }
+    }
+  ]
+}

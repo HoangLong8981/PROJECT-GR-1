@@ -1,0 +1,196 @@
+# =============================================================================
+# KIẾN TRÚC MỤC TIÊU (TARGET V2) - THIẾT KẾ LẠI THEO KHUNG WELL-ARCHITECTED
+# Đặc điểm cải tiến:
+# 1. Reliability: Loại bỏ SPOF với Nginx Load Balancer + 2 App Replicas + Health Check.
+# 2. Security: Phân đoạn mạng (frontend-net & backend-net internal), DB không mở cổng Public.
+# 3. Performance: Stateless App, tách ảnh tĩnh sang MinIO Object Storage, Connection Pool.
+# 4. Operational Excellence: Giám sát tập trung bằng Prometheus & Grafana.
+# Cách chạy: docker compose -f infra/docker-compose.v2.yml --env-file .env up -d --build
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # TẦNG 1: PUBLIC SUBNET - BỘ CÂN BẰNG TẢI (NGINX LOAD BALANCER L7)
+  # Điểm tiếp nhận lưu lượng duy nhất từ Internet (Cổng 8080)
+  # ---------------------------------------------------------------------------
+  load-balancer:
+    image: nginx:1.27-alpine
+    container_name: ecom-v2-lb
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app-replica-1
+      - app-replica-2
+    networks:
+      - frontend-net
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # TẦNG 2: PRIVATE APP SUBNET - CÁC BẢN SAO ỨNG DỤNG KHÔNG TRẠNG THÁI (STATELESS)
+  # Không mở cổng trực tiếp ra máy chủ host, chỉ nhận lưu lượng từ Load Balancer
+  # ---------------------------------------------------------------------------
+  app-replica-1:
+    build:
+      context: ../app
+      dockerfile: Dockerfile
+    container_name: app-replica-1
+    environment:
+      NODE_ID: "app-replica-1 (AZ-a)"
+      ARCH_VERSION: "V2-Well-Architected"
+      POSTGRES_USER: ${POSTGRES_USER:-ecom_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ChangeMe_StrongPassword_2026!}
+      POSTGRES_DB: ${POSTGRES_DB:-ecommerce_db}
+      POSTGRES_HOST: postgres-db
+      POSTGRES_PORT: 5432
+      STORAGE_MODE: "minio-s3"
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio-storage:9000}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000}
+      MINIO_BUCKET: ${MINIO_BUCKET:-product-images}
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 20
+    expose:
+      - "8000"
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+      minio-storage:
+        condition: service_started
+    networks:
+      - frontend-net
+      - backend-net
+    restart: unless-stopped
+
+  app-replica-2:
+    build:
+      context: ../app
+      dockerfile: Dockerfile
+    container_name: app-replica-2
+    environment:
+      NODE_ID: "app-replica-2 (AZ-b)"
+      ARCH_VERSION: "V2-Well-Architected"
+      POSTGRES_USER: ${POSTGRES_USER:-ecom_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ChangeMe_StrongPassword_2026!}
+      POSTGRES_DB: ${POSTGRES_DB:-ecommerce_db}
+      POSTGRES_HOST: postgres-db
+      POSTGRES_PORT: 5432
+      STORAGE_MODE: "minio-s3"
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio-storage:9000}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000}
+      MINIO_BUCKET: ${MINIO_BUCKET:-product-images}
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 20
+    expose:
+      - "8000"
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+      minio-storage:
+        condition: service_started
+    networks:
+      - frontend-net
+      - backend-net
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # TẦNG 3: PRIVATE DATA SUBNET - CƠ SỞ DỮ LIỆU & OBJECT STORAGE TÁCH RIÊNG
+  # PostgreSQL nằm hoàn toàn trong mạng nội bộ backend-net, KHÔNG có cổng Public
+  # ---------------------------------------------------------------------------
+  postgres-db:
+    image: postgres:16-alpine
+    container_name: ecom-v2-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ecom_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ChangeMe_StrongPassword_2026!}
+      POSTGRES_DB: ${POSTGRES_DB:-ecommerce_db}
+    volumes:
+      - ../app/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - postgres_v2_data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    networks:
+      - backend-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ecom_user} -d ${POSTGRES_DB:-ecommerce_db}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Lưu trữ đối tượng S3-Compatible (MinIO) cho hình ảnh sản phẩm tĩnh
+  minio-storage:
+    image: minio/minio:latest
+    container_name: ecom-v2-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ChangeMe_MinioSecret_2026!}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_v2_data:/data
+    networks:
+      - frontend-net
+      - backend-net
+    restart: unless-stopped
+
+  # Tác vụ khởi tạo tự động Bucket & chính sách đọc ảnh tĩnh trên MinIO
+  minio-init:
+    image: minio/mc:latest
+    container_name: ecom-v2-minio-init
+    depends_on:
+      - minio-storage
+    entrypoint: >
+      /bin/sh -c "
+      sleep 3;
+      /usr/bin/mc alias set myminio http://minio-storage:9000 ${MINIO_ROOT_USER:-minio_admin} ${MINIO_ROOT_PASSWORD:-ChangeMe_MinioSecret_2026!};
+      /usr/bin/mc mb --ignore-existing myminio/${MINIO_BUCKET:-product-images};
+      /usr/bin/mc anonymous set download myminio/${MINIO_BUCKET:-product-images};
+      exit 0;
+      "
+    networks:
+      - backend-net
+
+  # ---------------------------------------------------------------------------
+  # TẦNG GIÀM SÁT (OBSERVABILITY) - PROMETHEUS & GRAFANA
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: ecom-v2-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - backend-net
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: ecom-v2-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-ChangeMe_Grafana_2026!}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - frontend-net
+      - backend-net
+    restart: unless-stopped
+
+networks:
+  # Mạng vùng biên (Public/DMZ): Chỉ kết nối Load Balancer với tầng App
+  frontend-net:
+    driver: bridge
+  # Mạng vùng dữ liệu riêng tư (Private Subnet): Cô lập hoàn toàn Database
+  backend-net:
+    driver: bridge
+    internal: true
+
+volumes:
+  postgres_v2_data:
+  minio_v2_data:
