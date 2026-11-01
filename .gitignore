@@ -18,3 +18,7 @@ grafana_data/
 # IDE
 .vscode/
 .idea/
+
+PROJECT-GR-1/
+*.log
+
