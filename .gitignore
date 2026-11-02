@@ -22,3 +22,8 @@ grafana_data/
 PROJECT-GR-1/
 *.log
 
+
+*.db
+*.db-wal
+*.db-shm
+

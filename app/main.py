@@ -1,14 +1,22 @@
 import os
 import time
 import socket
+import sqlite3
+import threading
 from contextlib import asynccontextmanager
 from typing import Optional
 
-import psycopg2
-from psycopg2 import pool
-from psycopg2.extras import RealDictCursor
+try:
+    import psycopg2
+    from psycopg2 import pool
+    from psycopg2.extras import RealDictCursor
+except ImportError:
+    psycopg2 = None
+    pool = None
+    RealDictCursor = None
+
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 
@@ -20,6 +28,9 @@ ARCH_VERSION = os.getenv("ARCH_VERSION", "V2-Well-Architected")
 STORAGE_MODE = os.getenv("STORAGE_MODE", "minio-s3")
 MINIO_PUBLIC_URL = os.getenv("MINIO_PUBLIC_URL", "http://localhost:9000")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "product-images")
+
+DB_ENGINE = os.getenv("DB_ENGINE", "auto")  # "postgres", "sqlite", or "auto"
+SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", os.path.join(os.path.dirname(__file__), "ecommerce_local.db"))
 
 DB_HOST = os.getenv("POSTGRES_HOST", "localhost")
 DB_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
@@ -54,12 +65,79 @@ DB_HEALTH_GAUGE = Gauge(
     ["node_id"]
 )
 
-db_pool: Optional[pool.ThreadedConnectionPool] = None
+db_pool = None
+active_db_mode = "uninitialized"
+sqlite_lock = threading.Lock()
+
+
+def init_sqlite_db():
+    """Khởi tạo và seed 500 sản phẩm mẫu cho chế độ chạy thực nghiệm Local (không cần Docker)."""
+    global active_db_mode
+    conn = sqlite3.connect(SQLITE_DB_PATH, timeout=30.0, check_same_thread=False)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    with conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS products (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sku TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                category TEXT NOT NULL,
+                price REAL NOT NULL,
+                stock INTEGER NOT NULL DEFAULT 100,
+                image_key TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                customer_name TEXT NOT NULL,
+                product_id INTEGER NOT NULL,
+                quantity INTEGER NOT NULL CHECK (quantity > 0),
+                total_amount REAL NOT NULL,
+                served_by_node TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cur = conn.execute("SELECT COUNT(*) FROM products;")
+        count = cur.fetchone()[0]
+        if count == 0:
+            products_to_seed = []
+            for i in range(1, 501):
+                sku = f"SKU-CLOUD-{i:04d}"
+                mod = i % 5
+                if mod == 0:
+                    name, cat = f"Laptop CloudBook Pro M{i}", "Laptop"
+                elif mod == 1:
+                    name, cat = f"Bàn phím cơ Wireless KeyChron K{i}", "Phụ kiện"
+                elif mod == 2:
+                    name, cat = f"Màn hình đồ họa UltraSharp 4K U{i}", "Màn hình"
+                elif mod == 3:
+                    name, cat = f"Tai nghe chống ồn Studio ANC S{i}", "Âm thanh"
+                else:
+                    name, cat = f"Ổ cứng SSD NVMe Gen4 Enterprise E{i}", "Lưu trữ"
+                price = float(500000 + (i * 37000) % 25000000)
+                img_key = f"products/item-{(i % 10) + 1}.svg"
+                products_to_seed.append((sku, name, cat, price, 5000, img_key))
+            conn.executemany(
+                "INSERT OR IGNORE INTO products (sku, name, category, price, stock, image_key) VALUES (?, ?, ?, ?, ?, ?);",
+                products_to_seed
+            )
+    conn.close()
+    active_db_mode = "sqlite-wal"
+    DB_HEALTH_GAUGE.labels(node_id=NODE_ID).set(1)
+    print(f"[{NODE_ID}] Đã khởi tạo CSDL SQLite WAL sẵn sàng (500 sản phẩm) tại: {SQLITE_DB_PATH}")
 
 
 def init_db_pool():
-    global db_pool
-    for attempt in range(10):
+    global db_pool, active_db_mode
+    if DB_ENGINE.lower() == "sqlite" or psycopg2 is None:
+        init_sqlite_db()
+        return
+
+    max_attempts = 10 if DB_ENGINE.lower() == "postgres" else 2
+    for attempt in range(max_attempts):
         try:
             db_pool = pool.ThreadedConnectionPool(
                 minconn=DB_POOL_MIN,
@@ -69,14 +147,22 @@ def init_db_pool():
                 dbname=DB_NAME,
                 user=DB_USER,
                 password=DB_PASS,
-                connect_timeout=3
+                connect_timeout=2
             )
+            active_db_mode = "postgresql-pool"
             DB_HEALTH_GAUGE.labels(node_id=NODE_ID).set(1)
+            print(f"[{NODE_ID}] Kết nối PostgreSQL thành công ({DB_HOST}:{DB_PORT}/{DB_NAME})")
             return
         except Exception as e:
-            print(f"[{NODE_ID}] Đang chờ kết nối PostgreSQL ({attempt + 1}/10): {e}")
-            time.sleep(2)
-    DB_HEALTH_GAUGE.labels(node_id=NODE_ID).set(0)
+            print(f"[{NODE_ID}] Đang chờ kết nối PostgreSQL ({attempt + 1}/{max_attempts}): {e}")
+            if attempt < max_attempts - 1:
+                time.sleep(1.5)
+
+    if DB_ENGINE.lower() == "auto":
+        print(f"[{NODE_ID}] Không tìm thấy PostgreSQL, tự động chuyển sang chế độ Local SQLite WAL để đảm bảo chạy thực nghiệm.")
+        init_sqlite_db()
+    else:
+        DB_HEALTH_GAUGE.labels(node_id=NODE_ID).set(0)
 
 
 @asynccontextmanager
@@ -102,6 +188,7 @@ async def telemetry_middleware(request: Request, call_next):
     start_time = time.perf_counter()
     path = request.url.path
     method = request.method
+    elapsed = 0.0
 
     try:
         response: Response = await call_next(request)
@@ -144,168 +231,290 @@ class OrderCreateRequest(BaseModel):
 # =============================================================================
 @app.get("/health")
 def health_check():
-    if not db_pool:
+    if active_db_mode == "postgresql-pool" and db_pool:
+        conn = None
+        try:
+            conn = db_pool.getconn()
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1;")
+                cur.fetchone()
+            DB_HEALTH_GAUGE.labels(node_id=NODE_ID).set(1)
+            return {
+                "status": "healthy",
+                "node_id": NODE_ID,
+                "architecture": ARCH_VERSION,
+                "storage_mode": STORAGE_MODE,
+                "database": "connected (postgresql)"
+            }
+        except Exception as e:
+            DB_HEALTH_GAUGE.labels(node_id=NODE_ID).set(0)
+            raise HTTPException(status_code=503, detail=f"Database healthcheck failed: {str(e)}")
+        finally:
+            if conn:
+                db_pool.putconn(conn)
+    elif active_db_mode == "sqlite-wal":
+        try:
+            conn = sqlite3.connect(SQLITE_DB_PATH, timeout=5.0)
+            conn.execute("SELECT 1;").fetchone()
+            conn.close()
+            DB_HEALTH_GAUGE.labels(node_id=NODE_ID).set(1)
+            return {
+                "status": "healthy",
+                "node_id": NODE_ID,
+                "architecture": ARCH_VERSION,
+                "storage_mode": STORAGE_MODE,
+                "database": "connected (sqlite-wal)"
+            }
+        except Exception as e:
+            DB_HEALTH_GAUGE.labels(node_id=NODE_ID).set(0)
+            raise HTTPException(status_code=503, detail=f"SQLite healthcheck failed: {str(e)}")
+    else:
         DB_HEALTH_GAUGE.labels(node_id=NODE_ID).set(0)
         raise HTTPException(status_code=503, detail="Database pool not initialized")
-
-    conn = None
-    try:
-        conn = db_pool.getconn()
-        with conn.cursor() as cur:
-            cur.execute("SELECT 1;")
-            cur.fetchone()
-        DB_HEALTH_GAUGE.labels(node_id=NODE_ID).set(1)
-        return {
-            "status": "healthy",
-            "node_id": NODE_ID,
-            "architecture": ARCH_VERSION,
-            "storage_mode": STORAGE_MODE,
-            "database": "connected"
-        }
-    except Exception as e:
-        DB_HEALTH_GAUGE.labels(node_id=NODE_ID).set(0)
-        raise HTTPException(status_code=503, detail=f"Database healthcheck failed: {str(e)}")
-    finally:
-        if conn:
-            db_pool.putconn(conn)
 
 
 # =============================================================================
 # ENDPOINT DANH SÁCH SẢN PHẨM & CHI TIẾT SẢN PHẨM (READ WORKLOAD)
 # =============================================================================
 @app.get("/api/products")
-def list_products(limit: int = 12, category: Optional[str] = None):
-    if not db_pool:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-
-    conn = None
-    try:
-        conn = db_pool.getconn()
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            if category:
-                cur.execute(
+@app.get("/products")
+def list_products(limit: int = 12, category: Optional[str] = None, search: Optional[str] = None):
+    if active_db_mode == "postgresql-pool" and db_pool:
+        conn = None
+        try:
+            conn = db_pool.getconn()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                if category and search:
+                    cur.execute(
+                        "SELECT id, sku, name, category, price, stock, image_key "
+                        "FROM products WHERE category = %s AND name ILIKE %s ORDER BY id LIMIT %s;",
+                        (category, f"%{search}%", limit)
+                    )
+                elif category:
+                    cur.execute(
+                        "SELECT id, sku, name, category, price, stock, image_key "
+                        "FROM products WHERE category = %s ORDER BY id LIMIT %s;",
+                        (category, limit)
+                    )
+                elif search:
+                    cur.execute(
+                        "SELECT id, sku, name, category, price, stock, image_key "
+                        "FROM products WHERE name ILIKE %s ORDER BY id LIMIT %s;",
+                        (f"%{search}%", limit)
+                    )
+                else:
+                    cur.execute(
+                        "SELECT id, sku, name, category, price, stock, image_key "
+                        "FROM products ORDER BY id LIMIT %s;",
+                        (limit,)
+                    )
+                rows = [dict(r) for r in cur.fetchall()]
+        finally:
+            if conn:
+                db_pool.putconn(conn)
+    elif active_db_mode == "sqlite-wal":
+        conn = sqlite3.connect(SQLITE_DB_PATH, timeout=10.0)
+        conn.row_factory = sqlite3.Row
+        try:
+            if category and search:
+                cur = conn.execute(
                     "SELECT id, sku, name, category, price, stock, image_key "
-                    "FROM products WHERE category = %s ORDER BY id LIMIT %s;",
+                    "FROM products WHERE category = ? AND name LIKE ? ORDER BY id LIMIT ?;",
+                    (category, f"%{search}%", limit)
+                )
+            elif category:
+                cur = conn.execute(
+                    "SELECT id, sku, name, category, price, stock, image_key "
+                    "FROM products WHERE category = ? ORDER BY id LIMIT ?;",
                     (category, limit)
                 )
-            else:
-                cur.execute(
+            elif search:
+                cur = conn.execute(
                     "SELECT id, sku, name, category, price, stock, image_key "
-                    "FROM products ORDER BY id LIMIT %s;",
+                    "FROM products WHERE name LIKE ? ORDER BY id LIMIT ?;",
+                    (f"%{search}%", limit)
+                )
+            else:
+                cur = conn.execute(
+                    "SELECT id, sku, name, category, price, stock, image_key "
+                    "FROM products ORDER BY id LIMIT ?;",
                     (limit,)
                 )
-            rows = cur.fetchall()
+            rows = [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
+    else:
+        raise HTTPException(status_code=503, detail="Database unavailable")
 
-        products = []
-        for r in rows:
-            item = dict(r)
-            item["price"] = float(item["price"])
-            item["image_url"] = f"{MINIO_PUBLIC_URL}/{MINIO_BUCKET}/{item['image_key']}"
-            products.append(item)
+    products = []
+    for item in rows:
+        item["price"] = float(item["price"])
+        item["image_url"] = f"{MINIO_PUBLIC_URL}/{MINIO_BUCKET}/{item['image_key']}"
+        products.append(item)
 
-        return {
-            "served_by": NODE_ID,
-            "architecture": ARCH_VERSION,
-            "storage_mode": STORAGE_MODE,
-            "count": len(products),
-            "items": products
-        }
-    finally:
-        if conn:
-            db_pool.putconn(conn)
+    return {
+        "served_by": NODE_ID,
+        "architecture": ARCH_VERSION,
+        "storage_mode": STORAGE_MODE,
+        "count": len(products),
+        "items": products
+    }
 
 
 @app.get("/api/products/{product_id}")
+@app.get("/products/{product_id}")
 def get_product(product_id: int):
-    if not db_pool:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-
-    conn = None
-    try:
-        conn = db_pool.getconn()
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
+    if active_db_mode == "postgresql-pool" and db_pool:
+        conn = None
+        try:
+            conn = db_pool.getconn()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT id, sku, name, category, price, stock, image_key "
+                    "FROM products WHERE id = %s;",
+                    (product_id,)
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Không tìm thấy sản phẩm")
+                item = dict(row)
+        finally:
+            if conn:
+                db_pool.putconn(conn)
+    elif active_db_mode == "sqlite-wal":
+        conn = sqlite3.connect(SQLITE_DB_PATH, timeout=10.0)
+        conn.row_factory = sqlite3.Row
+        try:
+            cur = conn.execute(
                 "SELECT id, sku, name, category, price, stock, image_key "
-                "FROM products WHERE id = %s;",
+                "FROM products WHERE id = ?;",
                 (product_id,)
             )
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Không tìm thấy sản phẩm")
             item = dict(row)
-            item["price"] = float(item["price"])
-            item["image_url"] = f"{MINIO_PUBLIC_URL}/{MINIO_BUCKET}/{item['image_key']}"
-            return {
-                "served_by": NODE_ID,
-                "architecture": ARCH_VERSION,
-                "product": item
-            }
-    finally:
-        if conn:
-            db_pool.putconn(conn)
+        finally:
+            conn.close()
+    else:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    item["price"] = float(item["price"])
+    item["image_url"] = f"{MINIO_PUBLIC_URL}/{MINIO_BUCKET}/{item['image_key']}"
+    return {
+        "served_by": NODE_ID,
+        "architecture": ARCH_VERSION,
+        "product": item
+    }
 
 
 # =============================================================================
 # ENDPOINT ĐẶT HÀNG GIAO DỊCH ACID (WRITE WORKLOAD)
 # =============================================================================
 @app.post("/api/orders", status_code=201)
+@app.post("/orders", status_code=201)
 def create_order(payload: OrderCreateRequest):
-    if not db_pool:
+    if active_db_mode == "postgresql-pool" and db_pool:
+        conn = None
+        try:
+            conn = db_pool.getconn()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Khóa dòng sản phẩm để đảm bảo tính nhất quán ACID khi Flash Sale
+                cur.execute(
+                    "SELECT id, name, price, stock FROM products WHERE id = %s FOR UPDATE;",
+                    (payload.product_id,)
+                )
+                product = cur.fetchone()
+                if not product:
+                    conn.rollback()
+                    raise HTTPException(status_code=404, detail="Sản phẩm không tồn tại")
+
+                if product["stock"] < payload.quantity:
+                    conn.rollback()
+                    raise HTTPException(status_code=400, detail="Sản phẩm đã hết tồn kho")
+
+                total_amount = float(product["price"]) * payload.quantity
+
+                cur.execute(
+                    "UPDATE products SET stock = stock - %s WHERE id = %s;",
+                    (payload.quantity, payload.product_id)
+                )
+                cur.execute(
+                    "INSERT INTO orders (customer_name, product_id, quantity, total_amount, served_by_node) "
+                    "VALUES (%s, %s, %s, %s, %s) RETURNING id, created_at;",
+                    (payload.customer_name, payload.product_id, payload.quantity, total_amount, NODE_ID)
+                )
+                order_row = cur.fetchone()
+                conn.commit()
+        except HTTPException:
+            raise
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            raise HTTPException(status_code=500, detail=f"Lỗi giao dịch đặt hàng: {str(e)}")
+        finally:
+            if conn:
+                db_pool.putconn(conn)
+    elif active_db_mode == "sqlite-wal":
+        with sqlite_lock:
+            conn = sqlite3.connect(SQLITE_DB_PATH, timeout=20.0, isolation_level=None)
+            conn.row_factory = sqlite3.Row
+            try:
+                conn.execute("BEGIN IMMEDIATE;")
+                cur = conn.execute(
+                    "SELECT id, name, price, stock FROM products WHERE id = ?;",
+                    (payload.product_id,)
+                )
+                product = cur.fetchone()
+                if not product:
+                    conn.execute("ROLLBACK;")
+                    raise HTTPException(status_code=404, detail="Sản phẩm không tồn tại")
+
+                if product["stock"] < payload.quantity:
+                    conn.execute("ROLLBACK;")
+                    raise HTTPException(status_code=400, detail="Sản phẩm đã hết tồn kho")
+
+                total_amount = float(product["price"]) * payload.quantity
+                conn.execute(
+                    "UPDATE products SET stock = stock - ? WHERE id = ?;",
+                    (payload.quantity, payload.product_id)
+                )
+                cur_ins = conn.execute(
+                    "INSERT INTO orders (customer_name, product_id, quantity, total_amount, served_by_node) "
+                    "VALUES (?, ?, ?, ?, ?);",
+                    (payload.customer_name, payload.product_id, payload.quantity, total_amount, NODE_ID)
+                )
+                order_id = cur_ins.lastrowid
+                cur_ts = conn.execute("SELECT created_at FROM orders WHERE id = ?;", (order_id,))
+                created_at = cur_ts.fetchone()["created_at"]
+                conn.execute("COMMIT;")
+                order_row = {"id": order_id, "created_at": created_at}
+                product = dict(product)
+            except HTTPException:
+                raise
+            except Exception as e:
+                try:
+                    conn.execute("ROLLBACK;")
+                except Exception:
+                    pass
+                raise HTTPException(status_code=500, detail=f"Lỗi giao dịch đặt hàng: {str(e)}")
+            finally:
+                conn.close()
+    else:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
-    conn = None
-    try:
-        conn = db_pool.getconn()
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Khóa dòng sản phẩm để đảm bảo tính nhất quán ACID khi Flash Sale
-            cur.execute(
-                "SELECT id, name, price, stock FROM products WHERE id = %s FOR UPDATE;",
-                (payload.product_id,)
-            )
-            product = cur.fetchone()
-            if not product:
-                conn.rollback()
-                raise HTTPException(status_code=404, detail="Sản phẩm không tồn tại")
-
-            if product["stock"] < payload.quantity:
-                conn.rollback()
-                raise HTTPException(status_code=400, detail="Sản phẩm đã hết tồn kho")
-
-            total_amount = float(product["price"]) * payload.quantity
-
-            cur.execute(
-                "UPDATE products SET stock = stock - %s WHERE id = %s;",
-                (payload.quantity, payload.product_id)
-            )
-            cur.execute(
-                "INSERT INTO orders (customer_name, product_id, quantity, total_amount, served_by_node) "
-                "VALUES (%s, %s, %s, %s, %s) RETURNING id, created_at;",
-                (payload.customer_name, payload.product_id, payload.quantity, total_amount, NODE_ID)
-            )
-            order_row = cur.fetchone()
-            conn.commit()
-
-        ORDERS_CREATED.labels(node_id=NODE_ID).inc()
-        return {
-            "message": "Đặt hàng thành công",
-            "order_id": order_row["id"],
-            "customer_name": payload.customer_name,
-            "product_name": product["name"],
-            "quantity": payload.quantity,
-            "total_amount": total_amount,
-            "served_by": NODE_ID,
-            "architecture": ARCH_VERSION,
-            "created_at": str(order_row["created_at"])
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        raise HTTPException(status_code=500, detail=f"Lỗi giao dịch đặt hàng: {str(e)}")
-    finally:
-        if conn:
-            db_pool.putconn(conn)
+    ORDERS_CREATED.labels(node_id=NODE_ID).inc()
+    return {
+        "message": "Đặt hàng thành công",
+        "order_id": order_row["id"],
+        "customer_name": payload.customer_name,
+        "product_name": product["name"],
+        "quantity": payload.quantity,
+        "total_amount": total_amount,
+        "served_by": NODE_ID,
+        "architecture": ARCH_VERSION,
+        "created_at": str(order_row["created_at"])
+    }
 
 
 # =============================================================================
@@ -330,9 +539,9 @@ def index_page():
         <title>UTH Cloud E-Commerce - Well-Architected Demo</title>
         <style>
             :root {{
-                --primary: #003366;
-                --secondary: #006699;
-                --success: #15803d;
+                --primary: #0f766e;
+                --secondary: #003366;
+                --accent: #d97706;
                 --bg: #f8fafc;
             }}
             body {{
@@ -348,14 +557,16 @@ def index_page():
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+                border-bottom: 4px solid var(--accent);
             }}
             .badge {{
-                background: rgba(255,255,255,0.18);
+                background: rgba(255,255,255,0.16);
                 border: 1px solid rgba(255,255,255,0.4);
-                padding: 8px 14px;
+                padding: 8px 16px;
                 border-radius: 8px;
                 font-size: 14px;
+                line-height: 1.5;
             }}
             .container {{
                 max-width: 1150px;
@@ -368,7 +579,7 @@ def index_page():
                 padding: 20px;
                 margin-bottom: 24px;
                 box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-                border-left: 5px solid var(--secondary);
+                border-left: 5px solid var(--primary);
             }}
             .btn {{
                 background: var(--primary);
@@ -408,7 +619,7 @@ def index_page():
                 color: #38bdf8;
                 padding: 12px;
                 border-radius: 6px;
-                max-height: 160px;
+                max-height: 180px;
                 overflow-y: auto;
                 display: none;
             }}
@@ -418,10 +629,10 @@ def index_page():
         <header>
             <div>
                 <h2 style="margin:0;">☁️ UTH CloudStore — Đề tài 1: Well-Architected Framework</h2>
-                <small>Kiến trúc Website Thương mại điện tử 3 tầng có Cân bằng tải & Chịu lỗi</small>
+                <small>TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI TP.HCM | GVHD: TS. Lê Quốc Tuấn</small>
             </div>
             <div class="badge">
-                <div><strong>Phiên bản:</strong> {ARCH_VERSION}</div>
+                <div><strong>Kiến trúc:</strong> {ARCH_VERSION}</div>
                 <div><strong>Node phản hồi:</strong> <span id="current-node">{NODE_ID}</span></div>
                 <div><strong>Lưu trữ ảnh:</strong> {STORAGE_MODE}</div>
             </div>
@@ -429,13 +640,13 @@ def index_page():
 
         <div class="container">
             <div class="panel">
-                <h3 style="margin-top:0;">🔍 Bảng điều khiển Kiểm chứng Cân bằng tải & Chuyển đổi dự phòng (Failover)</h3>
+                <h3 style="margin-top:0;color:var(--primary);">🔍 Bảng điều khiển Kiểm chứng Cân bằng tải & Chuyển đổi dự phòng (Failover)</h3>
                 <p>Nhấn nút bên dưới để gửi liên tiếp 10 yêu cầu vào hệ thống và quan sát Load Balancer phân phối tải qua các bản sao (Replicas), hoặc thử tắt 1 container để kiểm chứng tính sẵn sàng cao:</p>
                 <button class="btn" onclick="testLoadBalancing()">⚡ Bắn 10 Request kiểm tra Load Balancer</button>
                 <div id="lb-log"></div>
             </div>
 
-            <h3>🛒 Danh mục Sản phẩm Thương mại điện tử (Từ PostgreSQL & Object Storage)</h3>
+            <h3 style="color:var(--secondary);">🛒 Danh mục Sản phẩm Thương mại điện tử (500 SKU - Giao dịch ACID)</h3>
             <div id="product-grid" class="grid">Đang tải dữ liệu sản phẩm...</div>
         </div>
 

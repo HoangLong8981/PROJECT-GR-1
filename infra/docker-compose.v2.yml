@@ -164,6 +164,7 @@ services:
     ports:
       - "9090:9090"
     networks:
+      - frontend-net
       - backend-net
     restart: unless-stopped
 
