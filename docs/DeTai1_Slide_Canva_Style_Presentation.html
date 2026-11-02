@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đề tài 1: E-Commerce Well-Architected | UTH Slide Presentation</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --teal-dark: #0f766e;
+            --teal-med: #0d9488;
+            --teal-light: #f0fdfa;
+            --navy-dark: #003366;
+            --navy-med: #1e3a8a;
+            --navy-light: #eff6ff;
+            --gold: #d97706;
+            --gold-light: #fef3c7;
+            --red: #dc2626;
+            --red-light: #fef2f2;
+            --green: #059669;
+            --green-light: #ecfdf5;
+            --slate-dark: #0f172a;
+            --slate-body: #334155;
+            --slate-muted: #64748b;
+            --card-border: #e2e8f0;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: #090d16;
+            color: var(--slate-dark);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 16:9 Presentation Stage */
+        #stage-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .slide-deck {
+            width: 1333px;
+            height: 750px;
+            position: relative;
+            background: #ffffff url('uth_template_assets/uth_master_bg.png') no-repeat center center;
+            background-size: cover;
+            border-radius: 12px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+            display: none;
+            padding: 38px 55px;
+        }
+
+        .slide-deck.active {
+            display: flex;
+            flex-direction: column;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.99); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        /* Slide Header */
+        .slide-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .category-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--gold-light);
+            color: var(--gold);
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            padding: 4px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(217, 119, 6, 0.25);
+            margin-bottom: 6px;
+        }
+
+        .slide-title {
+            font-size: 26px;
+            font-weight: 800;
+            color: var(--teal-dark);
+            line-height: 1.25;
+            letter-spacing: -0.5px;
+        }
+
+        .uni-header {
+            text-align: right;
+            font-family: 'Times New Roman', serif;
+            font-weight: bold;
+            font-size: 14px;
+            color: #008080;
+            line-height: 1.35;
+        }
+
+        /* Slide Content Area */
+        .slide-body {
+            flex: 1;
+            display: grid;
+            gap: 24px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .col-2 {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .col-3 {
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+
+        .grid-2x3 {
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 16px;
+        }
+
+        /* Modern Card Component */
+        .canva-card {
+            background: #ffffff;
+            border: 1.5px solid var(--card-border);
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .canva-card:hover {
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+        }
+
+        .card-ribbon {
+            padding: 10px 18px;
+            font-weight: 700;
+            font-size: 13.5px;
+            color: #ffffff;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ribbon-teal { background: linear-gradient(135deg, var(--teal-dark), var(--teal-med)); }
+        .ribbon-navy { background: linear-gradient(135deg, var(--navy-dark), var(--navy-med)); }
+        .ribbon-gold { background: linear-gradient(135deg, var(--gold), #f59e0b); }
+        .ribbon-red { background: linear-gradient(135deg, var(--red), #ef4444); }
+        .ribbon-green { background: linear-gradient(135deg, var(--green), #10b981); }
+        .ribbon-purple { background: linear-gradient(135deg, #6d28d9, #8b5cf6); }
+
+        .card-body {
+            padding: 18px 22px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            font-size: 13.5px;
+            color: var(--slate-body);
+            line-height: 1.55;
+        }
+
+        .bullet-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .bullet-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--teal-dark);
+            margin-top: 7px;
+            flex-shrink: 0;
+        }
+
+        .bullet-dot.red { background: var(--red); }
+        .bullet-dot.green { background: var(--green); }
+        .bullet-dot.gold { background: var(--gold); }
+
+        .kw {
+            font-weight: 700;
+            color: var(--slate-dark);
+        }
+
+        .card-red-bg { background: var(--red-light); border-color: rgba(220, 38, 38, 0.25); }
+        .card-green-bg { background: var(--green-light); border-color: rgba(5, 150, 105, 0.25); }
+        .card-teal-bg { background: var(--teal-light); border-color: rgba(13, 148, 136, 0.25); }
+        .card-gold-bg { background: var(--gold-light); border-color: rgba(217, 119, 6, 0.25); }
+
+        /* Step Card (Slide 4 style) */
+        .step-card {
+            background: #ffffff;
+            border: 1.5px solid var(--card-border);
+            border-left: 5px solid var(--teal-dark);
+            border-radius: 10px;
+            padding: 10px 18px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+        }
+
+        .step-num {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--teal-dark);
+            color: white;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .step-content h4 {
+            font-size: 14.5px;
+            font-weight: 700;
+            color: var(--navy-dark);
+            margin-bottom: 2px;
+        }
+
+        .step-content p {
+            font-size: 12.5px;
+            color: var(--slate-body);
+        }
+
+        .step-tag {
+            font-size: 11.5px;
+            color: var(--gold);
+            font-weight: 700;
+            margin-top: 2px;
+        }
+
+        /* Stat Callouts */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 18px;
+            margin-top: 14px;
+        }
+
+        .stat-card {
+            background: #ffffff;
+            border: 2px solid var(--teal-med);
+            border-radius: 12px;
+            padding: 12px 18px;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(13, 148, 136, 0.1);
+        }
+
+        .stat-number {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--teal-dark);
+            line-height: 1.1;
+        }
+
+        .stat-label {
+            font-size: 11.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--navy-dark);
+            margin-top: 4px;
+        }
+
+        .stat-sub {
+            font-size: 11px;
+            color: var(--slate-muted);
+            margin-top: 2px;
+        }
+
+        /* Controls Floating Bar */
+        #nav-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 999px;
+            padding: 8px 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            z-index: 100;
+            color: white;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+        }
+
+        .nav-btn {
+            background: rgba(255, 255, 255, 0.12);
+            border: none;
+            color: white;
+            font-weight: 700;
+            font-size: 14px;
+            padding: 8px 16px;
+            border-radius: 999px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .nav-btn:hover {
+            background: var(--teal-med);
+            transform: translateY(-1px);
+        }
+
+        #slide-counter {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            font-size: 13.5px;
+            color: #38bdf8;
+            min-width: 75px;
+            text-align: center;
+        }
+
+        /* Image Display */
+        .chart-img {
+            width: 100%;
+            height: 100%;
+            max-height: 330px;
+            object-fit: contain;
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
+            background: #ffffff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+    </style>
+</head>
+<body>
+
+<div id="stage-container">
+
+    <!-- ==========================================
+         SLIDE 1: COVER SLIDE
+         ========================================== -->
+    <div class="slide-deck active" id="slide-1">
+        <div class="slide-header" style="margin-bottom:12px;">
+            <div></div>
+            <div class="uni-header">
+                TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI<br>
+                THÀNH PHỐ HỒ CHÍ MINH • KHOA CÔNG NGHỆ THÔNG TIN
+            </div>
+        </div>
+        <div class="canva-card" style="padding: 24px 36px; text-align: center; border-color: var(--teal-med); box-shadow: 0 10px 25px rgba(15,118,110,0.08); margin-bottom: 20px;">
+            <div class="category-pill" style="margin: 0 auto 10px auto;">HỌC PHẦN: ĐIỆN TOÁN ĐÁM MÂY (3 TÍN CHỈ)</div>
+            <h1 style="font-size: 27px; color: var(--teal-dark); font-weight: 800; line-height: 1.3; margin-bottom: 8px;">
+                ĐỀ TÀI 1: ĐÁNH GIÁ VÀ THIẾT KẾ LẠI KIẾN TRÚC<br>
+                WEBSITE THƯƠNG MẠI ĐIỆN TỬ THEO KHUNG WELL-ARCHITECTED
+            </h1>
+            <p style="font-size: 13px; color: var(--navy-med); font-weight: 600;">
+                Cloud-native 3-tier • Phân đoạn VPC Subnet • Nginx L7 Load Balancing • MinIO S3 • Thực nghiệm k6 & Chaos Failover
+            </p>
+        </div>
+        <div class="slide-body col-3" style="flex: unset; margin-bottom: 16px;">
+            <div class="canva-card" style="border-top: 4px solid var(--teal-dark); padding: 14px 18px;">
+                <div style="font-weight: 800; color: var(--teal-dark); font-size: 14px;">LÔ NGUYỄN HOÀNG LONG</div>
+                <div style="font-weight: 700; font-size: 12px; color: var(--slate-dark); margin-bottom: 6px;">Tech Lead & Lead Architect (2151050217)</div>
+                <div style="font-size: 11.5px; color: var(--slate-muted);">Phụ trách Phần 1: Nền tảng Cloud, NIST SP 800-145, SPI Model & GAP Analysis 6 Trụ cột WAF.</div>
+            </div>
+            <div class="canva-card" style="border-top: 4px solid var(--navy-dark); padding: 14px 18px;">
+                <div style="font-weight: 800; color: var(--navy-dark); font-size: 14px;">SINH VIÊN 2</div>
+                <div style="font-weight: 700; font-size: 12px; color: var(--slate-dark); margin-bottom: 6px;">Cloud Infra & Security Engineer</div>
+                <div style="font-size: 11.5px; color: var(--slate-muted);">Phụ trách Phần 2: Thiết kế mạng VPC Subnet, Multi-AZ HA, Cân bằng tải Nginx & MinIO S3.</div>
+            </div>
+            <div class="canva-card" style="border-top: 4px solid var(--gold); padding: 14px 18px;">
+                <div style="font-weight: 800; color: var(--gold); font-size: 14px;">SINH VIÊN 3</div>
+                <div style="font-weight: 700; font-size: 12px; color: var(--slate-dark); margin-bottom: 6px;">SRE, Performance & FinOps Lead</div>
+                <div style="font-size: 11.5px; color: var(--slate-muted);">Phụ trách Phần 3 & Thực nghiệm: NFR, Đo tải k6 250 VUs, Tiêm lỗi Chaos RTO & TCO 3 năm.</div>
+            </div>
+        </div>
+        <div class="canva-card" style="padding: 10px 20px; text-align: center; font-size: 12.5px; font-weight: 700; color: var(--navy-dark); background: var(--teal-light); border-color: var(--teal-med);">
+            Giảng viên hướng dẫn: TS. LÊ QUỐC TUẤN • Email: Tuan.le@ut.edu.vn • Năm học: 2025 - 2026
+        </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 2: BỐI CẢNH FLASH SALE & MỤC TIÊU
+         ========================================== -->
+    <div class="slide-deck" id="slide-2">
+        <div class="slide-header">
+            <div>
+                <div class="category-pill">TỔNG QUAN DỰ ÁN</div>
+                <div class="slide-title">Bối Cảnh Bài Toán Flash Sale & Mục Tiêu Đề Tài</div>
+            </div>
+            <div class="uni-header">TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI<br>THÀNH PHỐ HỒ CHÍ MINH</div>
+        </div>
+        <div class="slide-body col-2">
+            <div class="canva-card card-red-bg">
+                <div class="card-ribbon ribbon-red">🚨 Thách Thức Hiện Trạng (Kiến Trúc V1 - 1 Server)</div>
+                <div class="card-body">
+                    <div class="bullet-item"><div class="bullet-dot red"></div><div><span class="kw">Đột biến lưu lượng:</span> Tải tăng vọt gấp 5-10 lần ngày thường trong khung giờ vàng Flash Sale.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot red"></div><div><span class="kw">Tranh chấp CPU/RAM:</span> Web App và PostgreSQL chia sẻ chung 1 tài nguyên vật lý hạn hẹp.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot red"></div><div><span class="kw">Sập dây chuyền (SPOF):</span> Khi máy chủ chạm ngưỡng 100% CPU, toàn bộ website ngừng hoạt động 100%.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot red"></div><div><span class="kw">Thiệt hại nặng nề:</span> Rớt kết nối đặt hàng, tổn thất doanh thu trực tiếp và làm mất uy tín thương hiệu.</div></div>
+                </div>
+            </div>
+            <div class="canva-card card-green-bg">
+                <div class="card-ribbon ribbon-green">🎯 Mục Tiêu Cải Tiến (Kiến Trúc V2 - Well-Architected)</div>
+                <div class="card-body">
+                    <div class="bullet-item"><div class="bullet-dot green"></div><div><span class="kw">Chuẩn hóa lý thuyết:</span> Áp dụng chuẩn NIST SP 800-145 và 6 trụ cột AWS Well-Architected Framework.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot green"></div><div><span class="kw">Mạng ảo VPC 3 lớp:</span> Phân đoạn Public DMZ, Private App và Private Data Subnet cô lập an toàn.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot green"></div><div><span class="kw">High Availability (HA):</span> Cân bằng tải Nginx least_conn + Multi-Replica + MinIO S3 Object Storage.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot green"></div><div><span class="kw">Kiểm chứng thực nghiệm:</span> Thử tải k6 250 VUs, tiêm lỗi dừng nóng container (RTO &lt; 2s) và TCO 3 năm.</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 3: KHUNG PHÂN CÔNG 3 SINH VIÊN
+         ========================================== -->
+    <div class="slide-deck" id="slide-3">
+        <div class="slide-header">
+            <div>
+                <div class="category-pill">TỔ CHỨC NHÂN SỰ</div>
+                <div class="slide-title">Khung Phân Công Trách Nhiệm 3 Thành Viên (Chuẩn Công Nghiệp)</div>
+            </div>
+            <div class="uni-header">TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI<br>THÀNH PHỐ HỒ CHÍ MINH</div>
+        </div>
+        <div class="slide-body col-3">
+            <div class="canva-card">
+                <div class="card-ribbon ribbon-teal">SV1: LÔ NGUYỄN HOÀNG LONG</div>
+                <div class="card-body">
+                    <div style="font-weight: 700; color: var(--teal-dark); font-size: 13px;">Tech Lead / Cloud Architect</div>
+                    <div class="bullet-item"><div class="bullet-dot"></div><div><span class="kw">Phần phụ trách:</span> Phần 1 - Nền tảng Cloud &amp; WAF.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot"></div><div><span class="kw">NIST 800-145:</span> 5 đặc trưng bản chất của Cloud.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot"></div><div><span class="kw">SPI Model:</span> IaaS, PaaS, SaaS &amp; Trách nhiệm chung.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot"></div><div><span class="kw">NIST 500-292:</span> 5 tác nhân trong TMĐT.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot"></div><div><span class="kw">WAF 6 Trụ cột:</span> Đánh giá GAP hiện trạng hệ thống.</div></div>
+                </div>
+            </div>
+            <div class="canva-card">
+                <div class="card-ribbon ribbon-navy">SV2: CLOUD INFRA LEAD</div>
+                <div class="card-body">
+                    <div style="font-weight: 700; color: var(--navy-med); font-size: 13px;">Infrastructure &amp; Security Lead</div>
+                    <div class="bullet-item"><div class="bullet-dot"></div><div><span class="kw">Phần phụ trách:</span> Phần 2 - Thiết kế Hạ tầng &amp; VPC.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot"></div><div><span class="kw">Kiến trúc 3-tier:</span> Xóa bỏ hoàn toàn điểm nghẽn SPOF.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot"></div><div><span class="kw">Mạng ảo VPC:</span> Phân đoạn Subnet an toàn (internal).</div></div>
+                    <div class="bullet-item"><div class="bullet-dot"></div><div><span class="kw">Nginx L7 LB:</span> Thuật toán least_conn &amp; Health check.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot"></div><div><span class="kw">MinIO S3:</span> Tách ảnh tĩnh &amp; Quản trị DB ACID.</div></div>
+                </div>
+            </div>
+            <div class="canva-card">
+                <div class="card-ribbon ribbon-gold">SV3: SRE &amp; FINOPS LEAD</div>
+                <div class="card-body">
+                    <div style="font-weight: 700; color: var(--gold); font-size: 13px;">SRE, Reliability &amp; FinOps Lead</div>
+                    <div class="bullet-item"><div class="bullet-dot gold"></div><div><span class="kw">Phần phụ trách:</span> Phần 3 &amp; Thực nghiệm đo đạc.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot gold"></div><div><span class="kw">Chỉ số NFR:</span> RPS, Latency p50/p95/p99, SLI/SLO/SLA.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot gold"></div><div><span class="kw">Thử tải k6:</span> 3 mức tải 30 -> 100 -> 250 VUs Flash Sale.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot gold"></div><div><span class="kw">Chaos Failover:</span> Dừng nóng replica đo RTO thực tế.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot gold"></div><div><span class="kw">TCO 3 năm:</span> CAPEX vs OPEX &amp; Độ nhạy cảm tải 2x/5x.</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 4: 5 ĐẶC TRƯNG NIST 800-145
+         ========================================== -->
+    <div class="slide-deck" id="slide-4">
+        <div class="slide-header">
+            <div>
+                <div class="category-pill">PHẦN 1: NỀN TẢNG CLOUD</div>
+                <div class="slide-title">5 Đặc Trưng Cốt Lõi Của Điện Toán Đám Mây (NIST SP 800-145)</div>
+            </div>
+            <div class="uni-header">TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI<br>THÀNH PHỐ HỒ CHÍ MINH</div>
+        </div>
+        <div class="slide-body" style="grid-template-rows: repeat(5, 1fr); gap: 10px;">
+            <div class="step-card">
+                <div class="step-num">01</div>
+                <div class="step-content">
+                    <h4>On-demand Self-service (Tự phục vụ theo nhu cầu)</h4>
+                    <p>Cấp phát tự động tài nguyên tính toán (VM, Database) qua API/Portal mà không cần nhân viên IT can thiệp thủ công.</p>
+                    <div class="step-tag">⚡ Ứng dụng TMĐT: Khởi tạo máy chủ tức thì khi phát động chiến dịch Marketing khuyến mãi.</div>
+                </div>
+            </div>
+            <div class="step-card">
+                <div class="step-num">02</div>
+                <div class="step-content">
+                    <h4>Broad Network Access (Truy cập mạng rộng rãi)</h4>
+                    <p>Khả năng truy cập tài nguyên mạng thuận tiện qua các chuẩn Internet (HTTP/HTTPS) hỗ trợ đa thiết bị.</p>
+                    <div class="step-tag">⚡ Ứng dụng TMĐT: Khách hàng mua sắm đồng thời mượt mà trên Mobile App, Web Browser, Tablet.</div>
+                </div>
+            </div>
+            <div class="step-card">
+                <div class="step-num">03</div>
+                <div class="step-content">
+                    <h4>Resource Pooling (Gộp chung tài nguyên)</h4>
+                    <p>Tài nguyên vật lý được gộp chung phục vụ đa người thuê (Multi-tenant), phân bổ động theo nhu cầu.</p>
+                    <div class="step-tag">⚡ Ứng dụng TMĐT: Tối ưu hóa chi phí máy chủ nhờ chia sẻ hạ tầng đám mây của nhà cung cấp.</div>
+                </div>
+            </div>
+            <div class="step-card">
+                <div class="step-num">04</div>
+                <div class="step-content">
+                    <h4>Rapid Elasticity (Co giãn nhanh chóng)</h4>
+                    <p>Khả năng co giãn (Scale-out / Scale-in) gần như tức thời khi lưu lượng truy cập tăng vọt hoặc giảm sút.</p>
+                    <div class="step-tag">⚡ Ứng dụng TMĐT: Tự động tăng gấp đôi số replica khi Flash Sale, hạ bớt vào ban đêm.</div>
+                </div>
+            </div>
+            <div class="step-card">
+                <div class="step-num">05</div>
+                <div class="step-content">
+                    <h4>Measured Service (Dịch vụ đo lường định lượng)</h4>
+                    <p>Đo đếm tài nguyên tiêu thụ minh bạch (CPU, RAM, Băng thông) theo mô hình dùng bao nhiêu trả bấy nhiêu.</p>
+                    <div class="step-tag">⚡ Ứng dụng TMĐT: Loại bỏ chi phí nhàn rỗi, kiểm soát chính xác hóa đơn hạ tầng từng giờ.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 7: 6 TRỤ CỘT AWS WAF
+         ========================================== -->
+    <div class="slide-deck" id="slide-7">
+        <div class="slide-header">
+            <div>
+                <div class="category-pill">PHẦN 1: NỀN TẢNG CLOUD</div>
+                <div class="slide-title">6 Trụ Cột Khung AWS Well-Architected Framework (WAF)</div>
+            </div>
+            <div class="uni-header">TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI<br>THÀNH PHỐ HỒ CHÍ MINH</div>
+        </div>
+        <div class="slide-body grid-2x3">
+            <div class="canva-card">
+                <div class="card-ribbon ribbon-purple">1. Operational Excellence</div>
+                <div class="card-body">
+                    <p>Vận hành &amp; giám sát hệ thống bằng code (IaC); tự động hóa telemetry với Prometheus &amp; Grafana.</p>
+                </div>
+            </div>
+            <div class="canva-card">
+                <div class="card-ribbon ribbon-red">2. Security (Bảo Mật)</div>
+                <div class="card-body">
+                    <p>Áp dụng Defense-in-Depth, phân đoạn VPC Subnet; container chạy dưới quyền non-root appuser.</p>
+                </div>
+            </div>
+            <div class="canva-card">
+                <div class="card-ribbon ribbon-teal">3. Reliability (Tin Cậy)</div>
+                <div class="card-body">
+                    <p>Loại bỏ điểm chết đơn lẻ (SPOF); triển khai Multi-AZ; Nginx Load Balancer tự động failover &lt; 2 giây.</p>
+                </div>
+            </div>
+            <div class="canva-card">
+                <div class="card-ribbon ribbon-navy">4. Performance Efficiency</div>
+                <div class="card-body">
+                    <p>Tối ưu hóa tài nguyên; cân bằng tải least_conn; tách hình ảnh sản phẩm tĩnh sang MinIO S3 Storage.</p>
+                </div>
+            </div>
+            <div class="canva-card">
+                <div class="card-ribbon ribbon-gold">5. Cost Optimization</div>
+                <div class="card-body">
+                    <p>Tránh cấp phát thừa; Auto-scaling tắt bớt tài nguyên ban đêm; tiết kiệm &gt; 50% TCO bằng Reserved Instances.</p>
+                </div>
+            </div>
+            <div class="canva-card">
+                <div class="card-ribbon ribbon-green">6. Sustainability (Bền Vững)</div>
+                <div class="card-body">
+                    <p>Giảm thiểu phát thải carbon; kiến trúc Stateless giúp tối đa hóa hiệu suất sử dụng CPU/RAM của server.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 20: SƠ ĐỒ THỰC NGHIỆM V1 VS V2
+         ========================================== -->
+    <div class="slide-deck" id="slide-20">
+        <div class="slide-header">
+            <div>
+                <div class="category-pill">PHẦN 4: THỰC NGHIỆM &amp; ĐÁNH GIÁ</div>
+                <div class="slide-title">Sơ Đồ Kiến Trúc Thực Nghiệm V1 (Hiện Trạng) vs V2 (Well-Architected)</div>
+            </div>
+            <div class="uni-header">TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI<br>THÀNH PHỐ HỒ CHÍ MINH</div>
+        </div>
+        <div class="slide-body col-2">
+            <div class="canva-card card-red-bg" style="padding: 10px;">
+                <img class="chart-img" src="DeTai1_Ecommerce_WellArchitected/docs/charts/diagram_v1_architecture.png" alt="Kiến trúc V1">
+                <div style="font-weight: 700; font-size: 12px; color: var(--red); text-align: center; margin-top: 8px;">
+                    ❌ V1 Hiện Trạng: 1 Server nguyên khối (SPOF), DB mở cổng công khai, nghẽn khi có Flash Sale.
+                </div>
+            </div>
+            <div class="canva-card card-green-bg" style="padding: 10px;">
+                <img class="chart-img" src="DeTai1_Ecommerce_WellArchitected/docs/charts/diagram_v2_architecture.png" alt="Kiến trúc V2">
+                <div style="font-weight: 700; font-size: 12px; color: var(--green); text-align: center; margin-top: 8px;">
+                    ✅ V2 Well-Architected: Nginx LB L7, 2 App Replicas (AZ-a/b), MinIO S3, Postgres cô lập &amp; Prometheus.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 22: KẾT QUẢ ĐO KIỂM K6
+         ========================================== -->
+    <div class="slide-deck" id="slide-22">
+        <div class="slide-header">
+            <div>
+                <div class="category-pill">PHẦN 4: THỰC NGHIỆM &amp; ĐÁNH GIÁ</div>
+                <div class="slide-title">Kết Quả Đo Kiểm k6: Hiệu Năng Vượt Trội Tại Đỉnh Tải 250 VUs</div>
+            </div>
+            <div class="uni-header">TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI<br>THÀNH PHỐ HỒ CHÍ MINH</div>
+        </div>
+        <div class="slide-body col-2" style="flex: unset; height: 350px;">
+            <div class="canva-card" style="padding: 8px;">
+                <img class="chart-img" src="DeTai1_Ecommerce_WellArchitected/docs/charts/chart1_latency_p50_p95.png" alt="Độ trễ p50 p95">
+            </div>
+            <div class="canva-card" style="padding: 8px;">
+                <img class="chart-img" src="DeTai1_Ecommerce_WellArchitected/docs/charts/chart2_throughput_and_errors.png" alt="Thông lượng và Lỗi">
+            </div>
+        </div>
+        <div class="stats-row">
+            <div class="stat-card" style="border-color: var(--green);">
+                <div class="stat-number" style="color: var(--green);">450 RPS</div>
+                <div class="stat-label">Thông Lượng Xử Lý</div>
+                <div class="stat-sub">Gấp 5.5 lần so với V1 (82 RPS)</div>
+            </div>
+            <div class="stat-card" style="border-color: var(--teal-med);">
+                <div class="stat-number" style="color: var(--teal-dark);">142 ms</div>
+                <div class="stat-label">Độ Trễ Phân Vị p95</div>
+                <div class="stat-sub">Giảm 96.8% so với V1 (4,500 ms)</div>
+            </div>
+            <div class="stat-card" style="border-color: var(--navy-med);">
+                <div class="stat-number" style="color: var(--navy-dark);">0.00%</div>
+                <div class="stat-label">Tỷ Lệ Lỗi (Error Rate)</div>
+                <div class="stat-sub">Triệt tiêu 100% lỗi so với V1 (18.4%)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 23: THỰC NGHIỆM TIÊM LỖI DOCKER
+         ========================================== -->
+    <div class="slide-deck" id="slide-23">
+        <div class="slide-header">
+            <div>
+                <div class="category-pill">PHẦN 4: THỰC NGHIỆM &amp; ĐÁNH GIÁ</div>
+                <div class="slide-title">Thực Nghiệm Tiêm Lỗi Thảm Họa (Chaos Engineering Failover)</div>
+            </div>
+            <div class="uni-header">TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI<br>THÀNH PHỐ HỒ CHÍ MINH</div>
+        </div>
+        <div class="slide-body col-2">
+            <div class="canva-card card-red-bg">
+                <div class="card-ribbon ribbon-red">Quy Trình Tiêm Lỗi Dừng Nóng Container</div>
+                <div class="card-body">
+                    <div class="bullet-item"><div class="bullet-dot red"></div><div><span class="kw">Kịch bản có tải:</span> 100 người dùng ảo đang gửi request liên tục qua cổng Nginx Load Balancer (8080).</div></div>
+                    <div class="bullet-item"><div class="bullet-dot red"></div><div><span class="kw">Lệnh tiêm lỗi:</span> <code>docker stop app-replica-1</code> để giả lập sự cố máy chủ đứt nguồn đột ngột.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot red"></div><div><span class="kw">Phát hiện lỗi tức thì:</span> Nginx nhận tín hiệu connection refused trong vòng 1s (proxy_connect_timeout 1s).</div></div>
+                    <div class="bullet-item"><div class="bullet-dot red"></div><div><span class="kw">Chuyển tiếp tự động:</span> Nginx tự động gửi lại request sang Replica 2 mà không trả về lỗi cho người dùng.</div></div>
+                </div>
+            </div>
+            <div class="canva-card card-green-bg">
+                <div class="card-ribbon ribbon-green">Kết Quả Thực Nghiệm Trên Cụm Docker Thật</div>
+                <div class="card-body">
+                    <div class="bullet-item"><div class="bullet-dot green"></div><div><span class="kw">Thời gian phục hồi (RTO):</span> Đạt 1,004.6 ms (~ 1 giây), vượt xa chỉ tiêu cam kết ban đầu (&lt; 30 giây).</div></div>
+                    <div class="bullet-item"><div class="bullet-dot green"></div><div><span class="kw">Tỷ lệ lỗi gián đoạn:</span> 0 request bị lỗi / 15 request gửi trong lúc node 1 sập (Tỷ lệ lỗi 0.00%).</div></div>
+                    <div class="bullet-item"><div class="bullet-dot green"></div><div><span class="kw">Khôi phục tự động:</span> Khi khởi động lại Replica 1, Nginx tự động phục hồi luồng tải cân bằng 50/50.</div></div>
+                    <div class="bullet-item"><div class="bullet-dot green"></div><div><span class="kw">Tính toàn vẹn CSDL:</span> Toàn bộ đơn hàng được ghi nhận chính xác vào PostgreSQL; không mất đơn.</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 24: PHÂN TÍCH TCO 3 NĂM
+         ========================================== -->
+    <div class="slide-deck" id="slide-24">
+        <div class="slide-header">
+            <div>
+                <div class="category-pill">PHẦN 4: THỰC NGHIỆM &amp; ĐÁNH GIÁ</div>
+                <div class="slide-title">Phân Tích Chi Phí TCO 3 Năm &amp; Độ Nhạy Cảm Theo Tải (2x, 5x)</div>
+            </div>
+            <div class="uni-header">TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI<br>THÀNH PHỐ HỒ CHÍ MINH</div>
+        </div>
+        <div class="slide-body col-2">
+            <div class="canva-card" style="padding: 10px;">
+                <img class="chart-img" style="max-height: 420px;" src="DeTai1_Ecommerce_WellArchitected/docs/charts/chart3_tco_sensitivity_2x_5x.png" alt="Biểu đồ TCO">
+            </div>
+            <div class="canva-card card-gold-bg">
+                <div class="card-ribbon ribbon-gold">Phân Tích Kinh Tế FinOps Đám Mây</div>
+                <div class="card-body">
+                    <div class="bullet-item"><div class="bullet-dot gold"></div><div><span class="kw">Tải cơ sở (1x):</span> On-Premises tốn ~$14,500; Kiến trúc V2 tốn ~$9,200 (Tiết kiệm ngay 36.5% vốn ban đầu).</div></div>
+                    <div class="bullet-item"><div class="bullet-dot gold"></div><div><span class="kw">Khi mở rộng 2x:</span> On-Premises tăng lên ~$28,000 do mua thêm máy chủ; V2 chỉ tốn ~$14,800 (Tiết kiệm 47.1%).</div></div>
+                    <div class="bullet-item"><div class="bullet-dot gold"></div><div><span class="kw">Khi mở rộng 5x:</span> On-Premises vọt lên ~$62,000; V2 chỉ tốn ~$30,200 (Tiết kiệm 51.3% ngân sách vận hành).</div></div>
+                    <div class="bullet-item"><div class="bullet-dot gold"></div><div><span class="kw">Kết luận FinOps:</span> Càng mở rộng quy mô, kiến trúc Cloud Well-Architected càng tiết kiệm chi phí vượt trội nhờ tính đàn hồi (Elasticity).</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 28: KẾT THÚC & Q&A
+         ========================================== -->
+    <div class="slide-deck" id="slide-28">
+        <div class="slide-header">
+            <div>
+                <div class="category-pill">KẾT THÚC BÁO CÁO</div>
+                <div class="slide-title">Lời Cảm Ơn &amp; Phiên Hỏi Đáp (Q&amp;A)</div>
+            </div>
+            <div class="uni-header">TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI<br>THÀNH PHỐ HỒ CHÍ MINH</div>
+        </div>
+        <div class="canva-card" style="padding: 40px; text-align: center; border-color: var(--teal-med); box-shadow: 0 15px 35px rgba(15,118,110,0.1); justify-content: center;">
+            <h2 style="font-size: 24px; color: var(--teal-dark); font-weight: 800; line-height: 1.4; margin-bottom: 24px;">
+                XIN TRÂN TRỌNG CẢM ƠN THẦY TS. LÊ QUỐC TUẤN<br>
+                VÀ BỘ MÔN ĐIỆN TOÁN ĐÁM MÂY - ĐẠI HỌC GIAO THÔNG VẬN TẢI TP.HCM!
+            </h2>
+            <div class="category-pill" style="margin: 0 auto 24px auto; font-size: 14px; padding: 6px 18px;">
+                NHÓM SINH VIÊN ĐÃ SẴN SÀNG CHO PHIÊN HỎI ĐÁP BẢO VỆ ĐỒ ÁN
+            </div>
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 13.5px; color: var(--navy-dark); font-weight: 700; background: var(--teal-light); padding: 14px 24px; border-radius: 8px; display: inline-block; border: 1px solid var(--teal-med);">
+                Kho mã nguồn dự án &amp; Thực nghiệm trực tiếp công khai tại:<br>
+                👉 https://github.com/HoangLong8981/PROJECT-GR-1.git
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Floating Navigation Bar -->
+<div id="nav-controls">
+    <button class="nav-btn" onclick="prevSlide()">◀ Trước</button>
+    <div id="slide-counter">01 / 28</div>
+    <button class="nav-btn" onclick="nextSlide()">Tiếp ▶</button>
+    <button class="nav-btn" onclick="toggleFullscreen()" style="margin-left: 8px;">⛶ Toàn màn hình (F11)</button>
+</div>
+
+<script>
+    const slides = Array.from(document.querySelectorAll('.slide-deck'));
+    let currentIdx = 0;
+
+    function showSlide(idx) {
+        if (idx < 0) idx = 0;
+        if (idx >= slides.length) idx = slides.length - 1;
+        currentIdx = idx;
+
+        slides.forEach((s, i) => {
+            s.classList.toggle('active', i === currentIdx);
+        });
+
+        const num = String(currentIdx + 1).padStart(2, '0');
+        const total = String(slides.length).padStart(2, '0');
+        document.getElementById('slide-counter').innerText = `${num} / ${total}`;
+    }
+
+    function prevSlide() { showSlide(currentIdx - 1); }
+    function nextSlide() { showSlide(currentIdx + 1); }
+
+    function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen();
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+    }
+
+    // Keyboard Navigation
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+            nextSlide();
+        } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+            prevSlide();
+        } else if (e.key === 'Home') {
+            showSlide(0);
+        } else if (e.key === 'End') {
+            showSlide(slides.length - 1);
+        }
+    });
+
+    // Resize Scale to Fit Window
+    function handleResize() {
+        const stage = document.getElementById('stage-container');
+        const scale = Math.min(window.innerWidth / 1380, window.innerHeight / 780);
+        slides.forEach(s => {
+            s.style.transform = `scale(${Math.min(1.0, scale)})`;
+        });
+    }
+
+    window.addEventListener('resize', handleResize);
+    handleResize();
+</script>
+</body>
+</html>
