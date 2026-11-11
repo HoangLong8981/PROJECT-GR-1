@@ -120,11 +120,10 @@ services:
 
   # Lưu trữ đối tượng S3-Compatible (MinIO) cho hình ảnh sản phẩm tĩnh
   minio-storage:
-    image: alpine/minio:latest-release
+    image: cgr.dev/chainguard/minio:latest
     container_name: ecom-v2-minio
-    user: "root"
-    entrypoint: /bin/sh
-    command: -c "mkdir -p /data/${MINIO_BUCKET:-product-images}/products && minio server /data --console-address ':9001'"
+    user: "0:0"
+    command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ChangeMe_MinioSecret_2026!}
@@ -137,6 +136,20 @@ services:
       - frontend-net
       - backend-net
     restart: unless-stopped
+
+  # Tác vụ khởi tạo tự động Bucket trên MinIO (sử dụng biến môi trường MC_HOST_myminio)
+  minio-init:
+    image: cgr.dev/chainguard/minio-client:latest
+    container_name: ecom-v2-minio-init
+    user: "0:0"
+    depends_on:
+      - minio-storage
+    environment:
+      MC_HOST_myminio: http://${MINIO_ROOT_USER:-minio_admin}:${MINIO_ROOT_PASSWORD:-ChangeMe_MinioSecret_2026!}@minio-storage:9000
+    command: ["mb", "--ignore-existing", "myminio/${MINIO_BUCKET:-product-images}"]
+    restart: on-failure
+    networks:
+      - backend-net
 
   # ---------------------------------------------------------------------------
   # TẦNG GIÀM SÁT (OBSERVABILITY) - PROMETHEUS & GRAFANA

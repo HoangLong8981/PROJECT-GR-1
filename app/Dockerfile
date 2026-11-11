@@ -10,11 +10,14 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Sao chép mã nguồn ứng dụng
+# Sao chép mã nguồn ứng dụng & tài nguyên tĩnh TTGShop
 COPY main.py .
+COPY static ./static
 
-# Trụ cột Security (Well-Architected): Không chạy ứng dụng dưới quyền root
-RUN adduser --disabled-password --gecos "" appuser && chown -R appuser:appuser /app
+# Trụ cột Security (Well-Architected): Không chạy ứng dụng dưới quyền root (UID 10001)
+RUN groupadd -g 10001 appgroup && \
+    useradd -u 10001 -g appgroup -s /bin/sh appuser && \
+    chown -R appuser:appgroup /app
 USER appuser
 
 EXPOSE 8000
