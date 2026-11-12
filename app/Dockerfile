@@ -10,8 +10,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Sao chép mã nguồn ứng dụng & tài nguyên tĩnh TTGShop
-COPY main.py .
+# Sao chép mã nguồn ứng dụng & tài nguyên tĩnh TTGShop / Apple Store
+COPY main.py apple_template.py checkout_api.py ./
 COPY static ./static
 
 # Trụ cột Security (Well-Architected): Không chạy ứng dụng dưới quyền root (UID 10001)
