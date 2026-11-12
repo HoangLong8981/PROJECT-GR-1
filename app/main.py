@@ -213,6 +213,11 @@ except ImportError:
     from checkout_api import router as checkout_router
 
 try:
+    from app.shopee_template import render_shopee_store_html
+except ImportError:
+    from shopee_template import render_shopee_store_html
+
+try:
     from app.apple_template import render_apple_store_html
 except ImportError:
     from apple_template import render_apple_store_html
@@ -494,5 +499,11 @@ def open_slides():
 
 @app.get("/", response_class=HTMLResponse)
 def index_page(request: Request):
+    node = getattr(request.state, "served_by", resolve_serving_node())
+    return HTMLResponse(content=render_shopee_store_html(node=node, arch_version=ARCH_VERSION))
+
+
+@app.get("/apple", response_class=HTMLResponse)
+def apple_index_page(request: Request):
     node = getattr(request.state, "served_by", resolve_serving_node())
     return HTMLResponse(content=render_apple_store_html(node=node, arch_version=ARCH_VERSION))

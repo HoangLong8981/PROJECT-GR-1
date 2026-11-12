@@ -2,88 +2,92 @@
 # -*- coding: utf-8 -*-
 """
 ================================================================================
-🍎 TTGShop Apple Store Edition — Swarm Load Test & ACID Verifier (500 Reqs)
-Owned by: Worker 3 (@load-qa)
+🛍️ TTGShop Shopee Mall Edition — Swarm Load Test & ACID Verifier (500 Reqs)
+Owned by: Worker 3 (@shopee-qa)
 File: tests/swarm_load_test_500.py
 ================================================================================
 
 MỤC TIÊU KIỂM THỬ (TEST OBJECTIVES):
-1. Mô phỏng đột biến lưu lượng Flash Sale gồm **500 concurrent requests**:
-   - 400 requests đọc nhanh (Catalog `GET /api/products`, Chi tiết `GET /api/products/{id}`,
-     So sánh cấu hình Apple Store `GET /api/lineup/compare`, Health `GET /health`,
-     Đơn hàng gần nhất `GET /api/orders/recent`, Swarm Telemetry `GET /api/swarm/telemetry`).
-   - 100 giao dịch đặt hàng ACID đồng thời (`POST /api/checkout` & `POST /api/orders`)
-     trên 8 dòng Flagship PC Gaming (`TTG-PC-0001` .. `TTG-PC-0008`), kiểm thử mã giảm giá
-     `APPLE2026` (-1.500.000đ), `UTH2026` (-1.000.000đ), `TTG500K` (-500.000đ) cùng
-     phương thức thanh toán `Apple Pay` và `Chuyển khoản VietQR 24/7`.
-2. Chạy độc lập (Out-of-the-Box) bằng thư viện chuẩn Python (`concurrent.futures.ThreadPoolExecutor`
-   và `urllib.request`), KHÔNG yêu cầu cài đặt thêm gói pip bên ngoài.
-3. Đo lường và in bảng báo cáo kỹ thuật song ngữ Việt - Anh:
-   - Tổng số request (500), Tỷ lệ thành công (%), Số lỗi HTTP 5xx
+1. Mô phỏng đợt bùng nổ lưu lượng Shopee Flash Sale gồm **500 concurrent requests**:
+   - 400 requests đọc nhanh (Read Workload):
+     * Danh mục sản phẩm: `GET /api/products` (limit=12)
+     * Chi tiết sản phẩm: `GET /api/products/{id}` (Flagship PC #1..#8)
+     * Shopee Mall Thương hiệu: `GET /api/shopee/mall-brands`
+     * Kiểm tra sức khỏe hệ thống: `GET /health`
+     * Đơn hàng gần nhất: `GET /api/orders/recent` (limit=10)
+   - 100 giao dịch đặt hàng ACID đồng thời (Write Workload):
+     * Gọi `POST /api/checkout` với Shopee Voucher `SHOPEE2026` (-1.500.000đ)
+     * Phương thức thanh toán: `Ví ShopeePay` và `VietQR 24/7`
+     * Phân bổ đều trên 8 dòng Flagship PC Gaming (`TTG-PC-0001` .. `TTG-PC-0008`)
+2. Kiểm tra toàn vẹn tồn kho ACID & Chống bán âm kho (Zero Overselling):
+   - Xác thực phương trình: `stock_before - 100 == stock_after` khi 100 đơn hàng được commit.
+   - Xác thực: `min_stock >= 0` (Zero Overselling) trên toàn bộ danh mục sản phẩm.
+   - Kiểm tra số dư tồn kho từng sản phẩm: `stock_before[pid] - orders[pid] == stock_after[pid]`.
+3. Khả năng chạy độc lập (Standalone Execution):
+   - 100% sử dụng thư viện chuẩn Python (`concurrent.futures.ThreadPoolExecutor`, `urllib.request`).
+   - KHÔNG yêu cầu cài đặt bất kỳ gói pip bên ngoài nào.
+4. Báo cáo kỹ thuật chi tiết:
+   - Tổng số request (500), Tỷ lệ thành công (%), Số lỗi HTTP 5xx (0)
    - Thông lượng (Throughput req/s), Độ trễ P50 / P95 / P99 (ms)
-   - Phân bổ tải qua các nhánh `app-replica-1 (AZ-a)` và `app-replica-2 (AZ-b)`
-   - Kiểm định toàn vẹn tồn kho ACID (ACID Stock Integrity Check):
-     Xác minh `stock_before - successful_orders == stock_after` và đảm bảo
-     KHÔNG bán âm kho (`Zero Overselling`, `min_stock >= 0`).
+   - Phân bổ tải qua các nhánh Multi-AZ: `app-replica-1 (AZ-a)` và `app-replica-2 (AZ-b)`
+   - Xuất dữ liệu thống kê JSON vào `tests/data/swarm_load_test_500_summary.json`
 
-CÁCH CHẠY TRỰC TIẾP (STANDALONE PYTHON):
+CÁCH CHẠY TRỰC TIẾP:
     python tests/swarm_load_test_500.py
     python tests/swarm_load_test_500.py --url http://localhost:8000 --workers 50
     python tests/swarm_load_test_500.py --show-profiles
 
 ================================================================================
-OPTIONAL PROFILE 1: LOCUST LOAD PROFILE (`locustfile.py` — `pip install locust`)
+OPTIONAL PROFILE 1: LOCUST SHOPEE FLASH SALE PROFILE (`locustfile.py`)
     locust -f tests/swarm_load_test_500.py --headless -u 100 -r 25 -t 30s --host http://localhost:8000
 --------------------------------------------------------------------------------
 from locust import HttpUser, task, between
 import random
 
-class TTGShopFlashSaleUser(HttpUser):
+class ShopeeFlashSaleUser(HttpUser):
     wait_time = between(0.05, 0.25)
 
-    @task(5)
+    @task(3)
     def browse_catalog(self):
         self.client.get("/api/products?limit=12", name="GET /api/products")
 
-    @task(2)
-    def view_flagship_detail(self):
+    @task(3)
+    def view_product_detail(self):
         pid = random.randint(1, 8)
         self.client.get(f"/api/products/{pid}", name="GET /api/products/{id}")
 
     @task(2)
-    def compare_apple_lineup(self):
-        self.client.get("/api/lineup/compare", name="GET /api/lineup/compare")
+    def browse_mall_brands(self):
+        self.client.get("/api/shopee/mall-brands", name="GET /api/shopee/mall-brands")
 
     @task(1)
     def check_health_and_recent_orders(self):
         self.client.get("/health", name="GET /health")
         self.client.get("/api/orders/recent?limit=10", name="GET /api/orders/recent")
-        self.client.get("/api/swarm/telemetry", name="GET /api/swarm/telemetry")
 
     @task(2)
-    def place_acid_checkout(self):
+    def place_shopee_acid_checkout(self):
         pid = random.randint(1, 8)
-        promo = random.choice(["APPLE2026", "UTH2026", "TTG500K"])
-        payment = random.choice(["Apple Pay", "Chuyển khoản VietQR 24/7"])
+        payment = random.choice(["Ví ShopeePay", "VietQR 24/7"])
         payload = {
-            "customer_name": f"Locust_FlashSale_User_{random.randint(1000, 9999)}",
+            "customer_name": f"Shopee_User_{random.randint(1000, 9999)}",
             "phone": "0909123456",
-            "address": "268 Lý Thường Kiệt, Quận 10, TP.HCM",
+            "address": "Số 123 Đường Hoa Nguyễn Huệ, Quận 1, TP.HCM",
             "payment_method": payment,
-            "promo_code": promo,
+            "promo_code": "SHOPEE2026",
             "items": [{"product_id": pid, "quantity": 1}],
         }
         self.client.post("/api/checkout", json=payload, name="POST /api/checkout")
 
 ================================================================================
-OPTIONAL PROFILE 2: GRAFANA K6 FLASH SALE PROFILE (`k6_script.js` — `k6 run`)
+OPTIONAL PROFILE 2: GRAFANA K6 SHOPEE FLASH SALE PROFILE (`k6_script.js`)
 --------------------------------------------------------------------------------
 import http from 'k6/http';
 import { check } from 'k6';
 
 export const options = {
   scenarios: {
-    flash_sale_500_burst: {
+    shopee_flash_sale_500_burst: {
       executor: 'shared-iterations',
       vus: 50,
       iterations: 500,
@@ -97,27 +101,33 @@ export const options = {
 };
 
 const BASE_URL = __ENV.TARGET_URL || 'http://localhost:8000';
-const PROMOS = ['APPLE2026', 'UTH2026', 'TTG500K'];
-const PAYMENTS = ['Apple Pay', 'Chuyển khoản VietQR 24/7'];
+const PAYMENTS = ['Ví ShopeePay', 'VietQR 24/7'];
 
 export default function () {
   if (__ITER % 5 === 0) {
     const pid = (__ITER % 8) + 1;
     const payload = JSON.stringify({
-      customer_name: `k6_Buyer_${__VU}_${__ITER}`,
+      customer_name: `Shopee_k6_Buyer_${__VU}_${__ITER}`,
       phone: '0909888777',
       address: 'TP. Hồ Chí Minh',
       payment_method: PAYMENTS[__ITER % PAYMENTS.length],
-      promo_code: PROMOS[__ITER % PROMOS.length],
+      promo_code: 'SHOPEE2026',
       items: [{ product_id: pid, quantity: 1 }],
     });
     const res = http.post(`${BASE_URL}/api/checkout`, payload, {
       headers: { 'Content-Type': 'application/json' },
     });
-    check(res, { 'ACID Checkout 201/400': (r) => r.status === 201 || r.status === 400 });
+    check(res, { 'Shopee ACID Checkout 201/400': (r) => r.status === 201 || r.status === 400 });
   } else if (__ITER % 5 === 1) {
-    const res = http.get(`${BASE_URL}/api/lineup/compare`);
-    check(res, { 'Lineup Compare 200 OK': (r) => r.status === 200 });
+    const res = http.get(`${BASE_URL}/api/shopee/mall-brands`);
+    check(res, { 'Mall Brands 200 OK': (r) => r.status === 200 });
+  } else if (__ITER % 5 === 2) {
+    const pid = (__ITER % 8) + 1;
+    const res = http.get(`${BASE_URL}/api/products/${pid}`);
+    check(res, { 'Product Detail 200 OK': (r) => r.status === 200 });
+  } else if (__ITER % 5 === 3) {
+    const res = http.get(`${BASE_URL}/api/orders/recent?limit=10`);
+    check(res, { 'Recent Orders 200 OK': (r) => r.status === 200 });
   } else {
     const res = http.get(`${BASE_URL}/api/products?limit=12`);
     check(res, { 'Catalog 200 OK': (r) => r.status === 200 });
@@ -141,7 +151,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
-# Đảm bảo console Windows hiển thị chuẩn tiếng Việt UTF-8 và biểu tượng 🐝
+# Đảm bảo console Windows hiển thị chuẩn tiếng Việt UTF-8
 if hasattr(sys.stdout, "reconfigure"):
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -157,52 +167,64 @@ WRITE_REQUESTS_DEFAULT = 100
 DEFAULT_WORKERS = 50
 FLAGSHIP_PRODUCT_IDS = [1, 2, 3, 4, 5, 6, 7, 8]
 
+# Shopee payment methods & voucher code
+PRIMARY_SHOPEE_PROMO = "SHOPEE2026"
+PROMO_CODES = ["SHOPEE2026", "SHOPEE500K", "UTH2026", "TTG500K"]
 PAYMENT_METHODS = [
-    "Apple Pay",
-    "Chuyển khoản VietQR 24/7",
-    "COD - Thanh toán khi nhận máy",
-    "Trả góp 0% qua thẻ tín dụng",
+    "Ví ShopeePay",
+    "VietQR 24/7",
 ]
-PROMO_CODES = ["APPLE2026", "UTH2026", "TTG500K", ""]
 
 
-LOCUST_PROFILE_SNIPPET = """# Locust Profile (locustfile.py — chạy với: locust -f tests/swarm_load_test_500.py --host http://localhost:8000)
+LOCUST_PROFILE_SNIPPET = """# Locust Shopee Flash Sale Profile (locustfile.py — chạy: locust -f tests/swarm_load_test_500.py --host http://localhost:8000)
 from locust import HttpUser, task, between
 import random
 
-class TTGShopSwarmUser(HttpUser):
+class ShopeeFlashSaleUser(HttpUser):
     wait_time = between(0.05, 0.2)
 
-    @task(4)
-    def read_catalog_and_compare(self):
+    @task(3)
+    def browse_catalog(self):
         self.client.get("/api/products?limit=12", name="GET /api/products")
-        self.client.get(f"/api/products/{random.randint(1, 8)}", name="GET /api/products/{id}")
-        self.client.get("/api/lineup/compare", name="GET /api/lineup/compare")
-        self.client.get("/api/orders/recent?limit=10", name="GET /api/orders/recent")
+
+    @task(3)
+    def view_product_detail(self):
+        pid = random.randint(1, 8)
+        self.client.get(f"/api/products/{pid}", name="GET /api/products/{id}")
+
+    @task(2)
+    def browse_mall_brands(self):
+        self.client.get("/api/shopee/mall-brands", name="GET /api/shopee/mall-brands")
+
+    @task(1)
+    def check_health(self):
         self.client.get("/health", name="GET /health")
 
     @task(1)
-    def write_acid_checkout(self):
+    def view_recent_orders(self):
+        self.client.get("/api/orders/recent?limit=10", name="GET /api/orders/recent")
+
+    @task(2)
+    def place_shopee_checkout(self):
         pid = random.randint(1, 8)
-        promo = random.choice(["APPLE2026", "UTH2026", "TTG500K"])
-        payment = random.choice(["Apple Pay", "Chuyển khoản VietQR 24/7"])
+        payment = random.choice(["Ví ShopeePay", "VietQR 24/7"])
         self.client.post("/api/checkout", json={
-            "customer_name": f"SwarmLocust_{random.randint(100,999)}",
+            "customer_name": f"ShopeeLocust_{random.randint(100,999)}",
             "phone": "0909123456",
-            "address": "TP.HCM",
+            "address": "Số 123 Đường Hoa Nguyễn Huệ, Quận 1, TP.HCM",
             "payment_method": payment,
-            "promo_code": promo,
+            "promo_code": "SHOPEE2026",
             "items": [{"product_id": pid, "quantity": 1}]
         }, name="POST /api/checkout")
 """
 
-K6_PROFILE_SNIPPET = """// Grafana k6 Profile (k6_script.js — chạy với: k6 run -e TARGET_URL=http://localhost:8000 k6_script.js)
+K6_PROFILE_SNIPPET = """// Grafana k6 Shopee Flash Sale Profile (k6_script.js — chạy: k6 run -e TARGET_URL=http://localhost:8000 k6_script.js)
 import http from 'k6/http';
 import { check } from 'k6';
 
 export const options = {
   scenarios: {
-    flash_sale_500: {
+    shopee_flash_sale_500: {
       executor: 'shared-iterations',
       vus: 50,
       iterations: 500,
@@ -216,27 +238,33 @@ export const options = {
 };
 
 const BASE_URL = __ENV.TARGET_URL || 'http://localhost:8000';
-const PROMOS = ['APPLE2026', 'UTH2026', 'TTG500K'];
-const PAYMENTS = ['Apple Pay', 'Chuyển khoản VietQR 24/7'];
+const PAYMENTS = ['Ví ShopeePay', 'VietQR 24/7'];
 
 export default function () {
   if (__ITER % 5 === 0) {
     const pid = (__ITER % 8) + 1;
     const payload = JSON.stringify({
-      customer_name: `k6_Buyer_${__VU}_${__ITER}`,
+      customer_name: `k6_ShopeeUser_${__VU}_${__ITER}`,
       phone: '0909888777',
       address: 'TP. Hồ Chí Minh',
       payment_method: PAYMENTS[__ITER % PAYMENTS.length],
-      promo_code: PROMOS[__ITER % PROMOS.length],
+      promo_code: 'SHOPEE2026',
       items: [{ product_id: pid, quantity: 1 }],
     });
     const res = http.post(`${BASE_URL}/api/checkout`, payload, {
       headers: { 'Content-Type': 'application/json' },
     });
-    check(res, { 'ACID Checkout 201/400': (r) => r.status === 201 || r.status === 400 });
+    check(res, { 'Shopee Checkout 201/400': (r) => r.status === 201 || r.status === 400 });
   } else if (__ITER % 5 === 1) {
-    const res = http.get(`${BASE_URL}/api/lineup/compare`);
-    check(res, { 'Lineup Compare 200 OK': (r) => r.status === 200 });
+    const res = http.get(`${BASE_URL}/api/shopee/mall-brands`);
+    check(res, { 'Mall Brands 200 OK': (r) => r.status === 200 });
+  } else if (__ITER % 5 === 2) {
+    const pid = (__ITER % 8) + 1;
+    const res = http.get(`${BASE_URL}/api/products/${pid}`);
+    check(res, { 'Product Detail 200 OK': (r) => r.status === 200 });
+  } else if (__ITER % 5 === 3) {
+    const res = http.get(`${BASE_URL}/api/orders/recent?limit=10`);
+    check(res, { 'Recent Orders 200 OK': (r) => r.status === 200 });
   } else {
     const res = http.get(`${BASE_URL}/api/products?limit=12`);
     check(res, { 'Catalog 200 OK': (r) => r.status === 200 });
@@ -246,7 +274,7 @@ export default function () {
 
 
 def percentile(sorted_values: List[float], pct: float) -> float:
-    """Tính phân vị (P50, P95, P99) chính xác từ danh sách đã sắp xếp."""
+    """Tính phân vị (P50, P95, P99) chính xác từ danh sách số thực đã sắp xếp."""
     if not sorted_values:
         return 0.0
     if len(sorted_values) == 1:
@@ -268,20 +296,20 @@ def http_json_request(
     max_retries_on_socket_err: int = 2,
 ) -> Tuple[int, Dict[str, Any], Dict[str, str], float, Optional[str]]:
     """
-    Thực hiện HTTP request bằng `urllib.request` chuẩn Python.
+    Thực hiện HTTP request bằng `urllib.request` thuần của thư viện chuẩn Python.
     Trả về: (status_code, json_body, headers_dict, latency_ms, error_message)
     """
     data_bytes = None
     headers = {
         "Accept": "application/json",
-        "User-Agent": "TTGShop-Swarm-QA-Bee/2.1 (500-Concurrent-Verifier)",
+        "User-Agent": "TTGShop-Shopee-QA/2.2 (500-Concurrent-Verifier)",
         "Connection": "close",
     }
     if payload is not None:
         data_bytes = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json; charset=utf-8"
 
-    # Tránh độ trễ 2000ms do Windows ưu tiên thử IPv6 [::1] trước khi fallback về IPv4 127.0.0.1
+    # Tránh độ trễ 2000ms do Windows ưu tiên IPv6 [::1] trước khi fallback sang IPv4 127.0.0.1
     effective_url = url.replace("://localhost:", "://127.0.0.1:").replace("://localhost/", "://127.0.0.1/")
 
     last_err: Optional[str] = None
@@ -325,10 +353,10 @@ def http_json_request(
 def fetch_flagship_stocks(base_url: str) -> Dict[int, Dict[str, Any]]:
     """
     Lấy thông tin tồn kho thực tế của 8 sản phẩm Flagship PC (ID 1..8)
-    từ `/api/products?limit=20` (hoặc `/api/products/{id}`).
+    từ `/api/products?limit=20` (hoặc truy vấn trực tiếp `/api/products/{id}`).
     """
     stocks: Dict[int, Dict[str, Any]] = {}
-    status, data, _, _, err = http_json_request(f"{base_url}/api/products?limit=20", method="GET", timeout=10.0)
+    status, data, _, _, _ = http_json_request(f"{base_url}/api/products?limit=20", method="GET", timeout=10.0)
     if status == 200 and isinstance(data, dict) and "items" in data:
         for item in data.get("items", []):
             pid = int(item.get("id", 0))
@@ -359,35 +387,34 @@ def fetch_flagship_stocks(base_url: str) -> Dict[int, Dict[str, Any]]:
 
 def probe_swarm_endpoints(base_url: str) -> Dict[str, bool]:
     """
-    Kiểm tra xem các endpoint mới của `checkout_api.py` (bao gồm `/api/lineup/compare`)
-    đã được gắn vào `main.py` chưa.
+    Thăm dò trạng thái các endpoint Shopee Store trên máy chủ mục tiêu.
     """
     capabilities = {
         "health_ok": False,
-        "telemetry_mounted": False,
+        "mall_brands_mounted": False,
         "recent_orders_mounted": False,
-        "lineup_compare_mounted": False,
+        "telemetry_mounted": False,
         "checkout_mounted": False,
     }
     s_health, _, _, _, _ = http_json_request(f"{base_url}/health", method="GET", timeout=5.0)
     capabilities["health_ok"] = s_health == 200
 
-    s_tel, _, _, _, _ = http_json_request(f"{base_url}/api/swarm/telemetry", method="GET", timeout=5.0)
-    capabilities["telemetry_mounted"] = s_tel == 200
+    s_brands, _, _, _, _ = http_json_request(f"{base_url}/api/shopee/mall-brands", method="GET", timeout=5.0)
+    capabilities["mall_brands_mounted"] = s_brands == 200
 
     s_rec, _, _, _, _ = http_json_request(f"{base_url}/api/orders/recent?limit=5", method="GET", timeout=5.0)
     capabilities["recent_orders_mounted"] = s_rec == 200
 
-    s_cmp, _, _, _, _ = http_json_request(f"{base_url}/api/lineup/compare", method="GET", timeout=5.0)
-    capabilities["lineup_compare_mounted"] = s_cmp == 200
+    s_tel, _, _, _, _ = http_json_request(f"{base_url}/api/swarm/telemetry", method="GET", timeout=5.0)
+    capabilities["telemetry_mounted"] = s_tel == 200
 
-    # Kiểm tra OpenAPI schema để biết `/api/checkout` đã được đăng ký chưa mà không tạo đơn nháp
+    # Kiểm tra OpenAPI schema để biết `/api/checkout` đã được đăng ký chưa
     s_oa, oa_data, _, _, _ = http_json_request(f"{base_url}/openapi.json", method="GET", timeout=5.0)
     if s_oa == 200 and isinstance(oa_data, dict):
         paths = oa_data.get("paths", {})
         capabilities["checkout_mounted"] = "/api/checkout" in paths
-        if "/api/lineup/compare" in paths:
-            capabilities["lineup_compare_mounted"] = True
+        if "/api/shopee/mall-brands" in paths:
+            capabilities["mall_brands_mounted"] = True
     else:
         capabilities["checkout_mounted"] = capabilities["telemetry_mounted"]
 
@@ -399,8 +426,8 @@ def allocate_order_targets(
     num_orders: int,
 ) -> List[int]:
     """
-    Phân bổ `num_orders` (100) giao dịch đặt hàng trên 8 cấu hình Flagship PC (ID 1..8)
-    sao cho ưu tiên các máy còn tồn kho dồi dào, đồng thời phủ đều cả 8 mẫu Flagship PC.
+    Phân bổ chính xác `num_orders` (100) giao dịch mua hàng trên 8 cấu hình Flagship PC (ID 1..8)
+    sao cho ưu tiên các sản phẩm còn tồn kho dồi dào, đồng thời bao phủ đều cả 8 dòng máy.
     """
     sim_remaining = {pid: max(0, int(info.get("stock", 0))) for pid, info in stocks_before.items()}
     for pid in FLAGSHIP_PRODUCT_IDS:
@@ -415,7 +442,7 @@ def allocate_order_targets(
             sim_remaining[chosen_pid] -= 1
             allocated.append(chosen_pid)
         else:
-            # Nếu tổng tồn kho ban đầu của cả 8 máy < 100, các request vượt ngưỡng sẽ kiểm thử ACID Rollback (HTTP 400)
+            # Nếu tổng tồn kho ban đầu < 100, các request vượt ngưỡng sẽ kiểm thử ACID Rollback (HTTP 400)
             chosen_pid = FLAGSHIP_PRODUCT_IDS[idx % len(FLAGSHIP_PRODUCT_IDS)]
             allocated.append(chosen_pid)
         idx += 1
@@ -430,146 +457,100 @@ def build_500_workload_tasks(
     capabilities: Dict[str, bool],
 ) -> List[Dict[str, Any]]:
     """
-    Xây dựng danh sách 500 tác vụ kiểm thử tải (400 Read + 100 Write ACID),
-    xáo trộn ngẫu nhiên theo hạt giống cố định để mô phỏng đúng lưu lượng Flash Sale đồng thời.
+    Xây dựng danh sách 500 tác vụ kiểm thử tải chuẩn Shopee Mall:
+    - 400 Reads:
+      * 120 reqs (30%): GET /api/products
+      * 100 reqs (25%): GET /api/products/{id}
+      *  80 reqs (20%): GET /api/shopee/mall-brands
+      *  50 reqs (12.5%): GET /health
+      *  50 reqs (12.5%): GET /api/orders/recent
+    - 100 Writes:
+      * 100 reqs: POST /api/checkout với Voucher SHOPEE2026, thanh toán Ví ShopeePay / VietQR 24/7.
     """
     tasks: List[Dict[str, Any]] = []
 
-    # 1. Xây dựng 400 tác vụ READ (Catalog, Product Detail, Lineup Compare, Health, Recent Orders, Swarm Telemetry)
+    # 1. Xây dựng 400 tác vụ READ phân bổ chuẩn xác trên 5 endpoint
     for i in range(read_count):
-        if capabilities.get("telemetry_mounted") and capabilities.get("recent_orders_mounted"):
-            mod = i % 20
-            if mod < 8:
-                # 40% của 400 = 160 requests: GET /api/products?limit=12
-                tasks.append({
-                    "task_id": f"READ-{i+1:03d}",
-                    "kind": "READ",
-                    "endpoint_label": "GET /api/products",
-                    "method": "GET",
-                    "url": f"{base_url}/api/products?limit=12",
-                    "fallback_url": None,
-                    "payload": None,
-                    "product_id": None,
-                    "quantity": 0,
-                })
-            elif mod < 13:
-                # 25% của 400 = 100 requests: GET /api/products/{id}
-                pid = FLAGSHIP_PRODUCT_IDS[i % len(FLAGSHIP_PRODUCT_IDS)]
-                tasks.append({
-                    "task_id": f"READ-{i+1:03d}",
-                    "kind": "READ",
-                    "endpoint_label": "GET /api/products/{id}",
-                    "method": "GET",
-                    "url": f"{base_url}/api/products/{pid}",
-                    "fallback_url": None,
-                    "payload": None,
-                    "product_id": pid,
-                    "quantity": 0,
-                })
-            elif mod < 16:
-                # 15% của 400 = 60 requests: GET /api/lineup/compare (Apple Store Hardware Comparison)
-                tasks.append({
-                    "task_id": f"READ-{i+1:03d}",
-                    "kind": "READ",
-                    "endpoint_label": "GET /api/lineup/compare",
-                    "method": "GET",
-                    "url": f"{base_url}/api/lineup/compare",
-                    "fallback_url": f"{base_url}/api/products?limit=8",
-                    "payload": None,
-                    "product_id": None,
-                    "quantity": 0,
-                })
-            elif mod < 18:
-                # 10% của 400 = 40 requests: GET /health
-                tasks.append({
-                    "task_id": f"READ-{i+1:03d}",
-                    "kind": "READ",
-                    "endpoint_label": "GET /health",
-                    "method": "GET",
-                    "url": f"{base_url}/health",
-                    "fallback_url": None,
-                    "payload": None,
-                    "product_id": None,
-                    "quantity": 0,
-                })
-            elif mod == 18:
-                # 5% của 400 = 20 requests: GET /api/orders/recent
-                tasks.append({
-                    "task_id": f"READ-{i+1:03d}",
-                    "kind": "READ",
-                    "endpoint_label": "GET /api/orders/recent",
-                    "method": "GET",
-                    "url": f"{base_url}/api/orders/recent?limit=10",
-                    "fallback_url": None,
-                    "payload": None,
-                    "product_id": None,
-                    "quantity": 0,
-                })
-            else:
-                # 5% của 400 = 20 requests: GET /api/swarm/telemetry
-                tasks.append({
-                    "task_id": f"READ-{i+1:03d}",
-                    "kind": "READ",
-                    "endpoint_label": "GET /api/swarm/telemetry",
-                    "method": "GET",
-                    "url": f"{base_url}/api/swarm/telemetry",
-                    "fallback_url": None,
-                    "payload": None,
-                    "product_id": None,
-                    "quantity": 0,
-                })
+        mod = i % 40
+        if mod < 12:
+            # 12/40 = 30% -> 120 requests: GET /api/products?limit=12
+            tasks.append({
+                "task_id": f"READ-{i+1:03d}",
+                "kind": "READ",
+                "endpoint_label": "GET /api/products",
+                "method": "GET",
+                "url": f"{base_url}/api/products?limit=12",
+                "fallback_url": None,
+                "payload": None,
+                "product_id": None,
+                "quantity": 0,
+            })
+        elif mod < 22:
+            # 10/40 = 25% -> 100 requests: GET /api/products/{id}
+            pid = FLAGSHIP_PRODUCT_IDS[i % len(FLAGSHIP_PRODUCT_IDS)]
+            tasks.append({
+                "task_id": f"READ-{i+1:03d}",
+                "kind": "READ",
+                "endpoint_label": "GET /api/products/{id}",
+                "method": "GET",
+                "url": f"{base_url}/api/products/{pid}",
+                "fallback_url": None,
+                "payload": None,
+                "product_id": pid,
+                "quantity": 0,
+            })
+        elif mod < 30:
+            # 8/40 = 20% -> 80 requests: GET /api/shopee/mall-brands
+            tasks.append({
+                "task_id": f"READ-{i+1:03d}",
+                "kind": "READ",
+                "endpoint_label": "GET /api/shopee/mall-brands",
+                "method": "GET",
+                "url": f"{base_url}/api/shopee/mall-brands",
+                "fallback_url": f"{base_url}/api/products?limit=6",
+                "payload": None,
+                "product_id": None,
+                "quantity": 0,
+            })
+        elif mod < 35:
+            # 5/40 = 12.5% -> 50 requests: GET /health
+            tasks.append({
+                "task_id": f"READ-{i+1:03d}",
+                "kind": "READ",
+                "endpoint_label": "GET /health",
+                "method": "GET",
+                "url": f"{base_url}/health",
+                "fallback_url": None,
+                "payload": None,
+                "product_id": None,
+                "quantity": 0,
+            })
         else:
-            mod = i % 20
-            if mod < 11:
-                tasks.append({
-                    "task_id": f"READ-{i+1:03d}",
-                    "kind": "READ",
-                    "endpoint_label": "GET /api/products",
-                    "method": "GET",
-                    "url": f"{base_url}/api/products?limit=12",
-                    "fallback_url": None,
-                    "payload": None,
-                    "product_id": None,
-                    "quantity": 0,
-                })
-            elif mod < 16:
-                pid = FLAGSHIP_PRODUCT_IDS[i % len(FLAGSHIP_PRODUCT_IDS)]
-                tasks.append({
-                    "task_id": f"READ-{i+1:03d}",
-                    "kind": "READ",
-                    "endpoint_label": "GET /api/products/{id}",
-                    "method": "GET",
-                    "url": f"{base_url}/api/products/{pid}",
-                    "fallback_url": None,
-                    "payload": None,
-                    "product_id": pid,
-                    "quantity": 0,
-                })
-            else:
-                tasks.append({
-                    "task_id": f"READ-{i+1:03d}",
-                    "kind": "READ",
-                    "endpoint_label": "GET /health",
-                    "method": "GET",
-                    "url": f"{base_url}/health",
-                    "fallback_url": None,
-                    "payload": None,
-                    "product_id": None,
-                    "quantity": 0,
-                })
+            # 5/40 = 12.5% -> 50 requests: GET /api/orders/recent
+            tasks.append({
+                "task_id": f"READ-{i+1:03d}",
+                "kind": "READ",
+                "endpoint_label": "GET /api/orders/recent",
+                "method": "GET",
+                "url": f"{base_url}/api/orders/recent?limit=10",
+                "fallback_url": None,
+                "payload": None,
+                "product_id": None,
+                "quantity": 0,
+            })
 
-    # 2. Xây dựng 100 tác vụ WRITE ACID (POST /api/checkout & POST /api/orders trên Flagship PCs)
-    # Kiểm thử mã giảm giá APPLE2026 (-1,500,000đ), UTH2026 (-1,000,000đ), TTG500K (-500,000đ)
-    # và các phương thức Apple Pay, Chuyển khoản VietQR 24/7, COD, Trả góp 0%.
+    # 2. Xây dựng 100 tác vụ WRITE ACID (POST /api/checkout)
+    # Voucher: SHOPEE2026 (-1.500.000đ)
+    # Phương thức thanh toán: luân phiên Ví ShopeePay và VietQR 24/7
     order_pids = allocate_order_targets(stocks_before, write_count)
     use_checkout_api = capabilities.get("checkout_mounted", True)
 
     for j, pid in enumerate(order_pids):
-        customer_name = f"Khách hàng FlashSale #{j+1:03d}"
-        # Nếu `/api/checkout` đã sẵn sàng, phân bổ 80% qua `/api/checkout` và 20% qua `/api/orders`
-        if use_checkout_api and (j % 5 < 4):
-            promo = PROMO_CODES[j % len(PROMO_CODES)]
-            payment = PAYMENT_METHODS[(j // 2) % len(PAYMENT_METHODS)]
+        customer_name = f"Khách hàng Shopee #{j+1:03d}"
+        payment = PAYMENT_METHODS[j % len(PAYMENT_METHODS)]
+        promo = PRIMARY_SHOPEE_PROMO
+
+        if use_checkout_api:
             tasks.append({
                 "task_id": f"ORDER-{j+1:03d}",
                 "kind": "WRITE",
@@ -580,7 +561,7 @@ def build_500_workload_tasks(
                 "payload": {
                     "customer_name": customer_name,
                     "phone": f"0909{100000 + j:06d}",
-                    "address": f"Số {j+1} Lý Thường Kiệt, Quận 10, TP. Hồ Chí Minh",
+                    "address": f"Số {j+1} Đường Hoa Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh",
                     "payment_method": payment,
                     "promo_code": promo,
                     "items": [{"product_id": pid, "quantity": 1}],
@@ -594,6 +575,7 @@ def build_500_workload_tasks(
                 "quantity": 1,
             })
         else:
+            # Fallback nếu máy chủ đang chạy ở chế độ core tối giản
             tasks.append({
                 "task_id": f"ORDER-{j+1:03d}",
                 "kind": "WRITE",
@@ -611,8 +593,8 @@ def build_500_workload_tasks(
                 "quantity": 1,
             })
 
-    # Xáo trộn ngẫu nhiên 500 request để mô phỏng tải đồng thời thực tế (Read + Write xen kẽ)
-    rng = random.Random(20261111)
+    # Xáo trộn ngẫu nhiên 500 request (Read + Write xen kẽ) để mô phỏng tải Flash Sale đồng thời
+    rng = random.Random(20261112)
     rng.shuffle(tasks)
     return tasks
 
@@ -627,12 +609,8 @@ def execute_single_task(task: Dict[str, Any], timeout: float = 15.0) -> Dict[str
     )
     endpoint_label = task["endpoint_label"]
 
-    # Tự động fallback cho READ nếu `/api/lineup/compare` chưa được mount trên server cũ
-    if (
-        task["kind"] == "READ"
-        and status == 404
-        and task.get("fallback_url")
-    ):
+    # Tự động fallback nếu endpoint Shopee Mall Brands chưa được mount
+    if task["kind"] == "READ" and status == 404 and task.get("fallback_url"):
         status, body, headers, fb_latency_ms, err = http_json_request(
             url=task["fallback_url"],
             method="GET",
@@ -640,15 +618,10 @@ def execute_single_task(task: Dict[str, Any], timeout: float = 15.0) -> Dict[str
             timeout=timeout,
         )
         latency_ms += fb_latency_ms
-        endpoint_label = "GET /api/products (fallback)"
+        endpoint_label = f"{task['endpoint_label']} (fallback)"
 
-    # Tự động fallback sang POST /api/orders nếu POST /api/checkout trả về 404 (chưa mount router)
-    if (
-        task["kind"] == "WRITE"
-        and status == 404
-        and task.get("fallback_url")
-        and task.get("fallback_payload")
-    ):
+    # Tự động fallback sang POST /api/orders nếu POST /api/checkout trả về 404
+    if task["kind"] == "WRITE" and status == 404 and task.get("fallback_url") and task.get("fallback_payload"):
         status, body, headers, fb_latency_ms, err = http_json_request(
             url=task["fallback_url"],
             method="POST",
@@ -658,7 +631,7 @@ def execute_single_task(task: Dict[str, Any], timeout: float = 15.0) -> Dict[str
         latency_ms += fb_latency_ms
         endpoint_label = "POST /api/orders (fallback)"
 
-    # Xác định Node Replica xử lý request từ Header `X-Served-By` hoặc JSON body
+    # Xác định Node Replica xử lý request từ Header `X-Served-By` hoặc JSON response
     served_by = headers.get("x-served-by")
     if not served_by and isinstance(body, dict):
         served_by = body.get("served_by") or body.get("node_id")
@@ -674,7 +647,7 @@ def execute_single_task(task: Dict[str, Any], timeout: float = 15.0) -> Dict[str
         is_success = status == 200
     else:
         # Với giao dịch đặt hàng ACID: 201 Created là đặt thành công;
-        # 400 Bad Request khi hết hàng là ACID Rollback hợp lệ (chống bán âm kho thành công).
+        # 400 Bad Request khi hết hàng là ACID Rollback hợp lệ (chống bán âm kho).
         is_success = status in (200, 201, 400)
 
     return {
@@ -709,12 +682,14 @@ def run_benchmark(
 ) -> Dict[str, Any]:
     base_url = base_url.rstrip("/")
 
-    print("=" * 92)
-    print("🍎 TTGSHOP APPLE STORE EDITION — KIỂM THỬ TẢI ĐỒNG THỜI & TOÀN VẸN ACID (500 REQUESTS)")
-    print("=" * 92)
-    print(f"  • Mục tiêu (Target URL)       : {base_url}")
-    print(f"  • Tổng quy mô Flash Sale      : {total_requests} concurrent requests ({read_requests} READ + {write_requests} WRITE ACID)")
-    print(f"  • Luồng thực thi (Workers)    : {workers} luồng song song (ThreadPoolExecutor)")
+    print("=" * 96)
+    print("🛍️ TTGSHOP SHOPEE MALL EDITION — KIỂM THỬ TẢI ĐỒNG THỜI & TOÀN VẸN ACID (500 REQUESTS)")
+    print("=" * 96)
+    print(f"  • Mục tiêu (Target URL)           : {base_url}")
+    print(f"  • Quy mô kiểm thử (Workload)      : {total_requests} requests ({read_requests} READ + {write_requests} WRITE ACID)")
+    print(f"  • Luồng đồng thời (Workers)       : {workers} luồng song song (ThreadPoolExecutor)")
+    print(f"  • Voucher Shopee áp dụng          : {PRIMARY_SHOPEE_PROMO} (-1.500.000đ)")
+    print(f"  • Phương thức thanh toán          : {', '.join(PAYMENT_METHODS)}")
 
     # Bước 1: Kiểm tra kết nối & thăm dò endpoint
     capabilities = probe_swarm_endpoints(base_url)
@@ -724,17 +699,17 @@ def run_benchmark(
         sys.exit(1)
 
     mode_desc = (
-        "APPLE STORE + SWARM API (/api/checkout + /api/lineup/compare + /api/orders/recent + /api/swarm/telemetry)"
+        "SHOPEE MALL + SWARM API (/api/checkout + /api/shopee/mall-brands + /api/orders/recent + /api/swarm/telemetry)"
         if capabilities["checkout_mounted"]
         else "CORE API (/api/orders + /api/products + /health)"
     )
-    print(f"  • Chế độ Endpoint phát hiện   : {mode_desc}")
+    print(f"  • Chế độ Endpoint phát hiện       : {mode_desc}")
 
     # Bước 2: Chụp ảnh tồn kho TRƯỚC kiểm thử (Stock Before)
     stocks_before_map = fetch_flagship_stocks(base_url)
     total_stock_before = sum(item["stock"] for item in stocks_before_map.values())
-    print(f"  • Tổng tồn kho Flagship trước : {total_stock_before:,} máy (trên {len(stocks_before_map)} mã Flagship PC #1..#8)")
-    print("-" * 92)
+    print(f"  • Tổng tồn kho Flagship trước     : {total_stock_before:,} máy (trên {len(stocks_before_map)} mã Flagship PC #1..#8)")
+    print("-" * 96)
 
     # Bước 3: Khởi tạo 500 tác vụ và bắn đồng loạt qua ThreadPoolExecutor
     tasks = build_500_workload_tasks(
@@ -745,7 +720,7 @@ def run_benchmark(
         capabilities=capabilities,
     )
 
-    print(f"🚀 Đang bắn đồng loạt {len(tasks)} requests vào {base_url} ...")
+    print(f"🚀 Đang bắn đồng loạt {len(tasks)} requests vào {base_url} (50 luồng đồng thời) ...")
     results: List[Dict[str, Any]] = []
     progress_lock = threading.Lock()
     completed_counter = 0
@@ -793,7 +768,7 @@ def run_benchmark(
     replica_1_count = sum(cnt for node, cnt in node_counts.items() if "app-replica-1" in node)
     replica_2_count = sum(cnt for node, cnt in node_counts.items() if "app-replica-2" in node)
 
-    # Kiểm định ACID Stock Integrity
+    # Kiểm định toàn vẹn tồn kho ACID & Chống bán âm kho (Zero Overselling)
     successful_orders = sum(r["quantity"] for r in results if r["is_order_committed"])
     acid_rollbacks = sum(1 for r in results if r["is_acid_rollback"])
     orders_by_pid: Dict[int, int] = collections.Counter()
@@ -802,9 +777,12 @@ def run_benchmark(
             orders_by_pid[int(r["product_id"])] += int(r["quantity"])
 
     expected_stock_after = total_stock_before - successful_orders
-    stock_equation_holds = expected_stock_after == total_stock_after
+    stock_equation_holds = (expected_stock_after == total_stock_after)
+
+    # Kiểm tra phương trình cốt lõi: stock_before - 100 == stock_after
+    stock_decremented_by_100 = (total_stock_before - write_requests == total_stock_after) if successful_orders == write_requests else stock_equation_holds
     min_stock_after = min((item["stock"] for item in stocks_after_map.values()), default=0)
-    zero_overselling_holds = min_stock_after >= 0
+    zero_overselling_holds = (min_stock_after >= 0)
 
     per_product_audit: List[Dict[str, Any]] = []
     all_pids_consistent = True
@@ -827,34 +805,44 @@ def run_benchmark(
             "acid_valid": pid_ok,
         })
 
-    acid_overall_pass = stock_equation_holds and zero_overselling_holds and all_pids_consistent
+    acid_overall_pass = stock_equation_holds and zero_overselling_holds and stock_decremented_by_100 and all_pids_consistent
 
     # Thống kê theo từng Endpoint
     endpoint_stats: Dict[str, List[Dict[str, Any]]] = collections.defaultdict(list)
     for r in results:
         endpoint_stats[r["endpoint_label"]].append(r)
 
-    # Bước 6: In bảng báo cáo chuẩn kỹ thuật tiếng Việt + Technical Benchmark
-    print("\n" + "=" * 92)
+    # Bước 6: In bảng báo cáo kỹ thuật song ngữ chuẩn xác
+    req_summary_val = f"{total_executed} requests ({read_requests} R + {write_requests} W)"
+    succ_summary_val = f"{success_rate_pct:.2f}% ({success_count}/{total_executed} hợp lệ)"
+    err_summary_val = f"{http_5xx_count} lỗi (Zero Server Crash)"
+    wall_summary_val = f"{wall_duration_s:.3f} giây"
+    tps_summary_val = f"{throughput_rps:.2f} req/s"
+    p50_summary_val = f"{p50_ms:.2f} ms"
+    p95_summary_val = f"{p95_ms:.2f} ms"
+    p99_summary_val = f"{p99_ms:.2f} ms"
+    lat_summary_val = f"{avg_ms:.1f} / {min_ms:.1f} / {max_ms:.1f} ms"
+
+    print("\n" + "=" * 96)
     print("📊 BẢNG 1: TỔNG HỢP KẾT QUẢ KIỂM THỬ TẢI 500 CONCURRENT REQUESTS (BENCHMARK SUMMARY)")
-    print("=" * 92)
+    print("=" * 96)
     print(f"  ┌────────────────────────────────────────────────────┬───────────────────────────────────┐")
     print(f"  │ Chỉ số đo lường (Benchmark Metric)                 │ Giá trị thực nghiệm (Measured)    │")
     print(f"  ├────────────────────────────────────────────────────┼───────────────────────────────────┤")
-    print(f"  │ 1. Tổng số Request (Total Requests)                │ {total_executed:>6} requests (400 R + 100 W)   │")
-    print(f"  │ 2. Tỷ lệ thành công (Success Rate %)               │ {success_rate_pct:>6.2f}% ({success_count}/{total_executed} hợp lệ)          │")
-    print(f"  │ 3. Số lỗi máy chủ HTTP 5xx (HTTP 5xx Count)        │ {http_5xx_count:>6} lỗi (Zero Server Crash)    │")
-    print(f"  │ 4. Thời gian hoàn tất (Total Wall Time)            │ {wall_duration_s:>6.3f} giây                       │")
-    print(f"  │ 5. Thông lượng xử lý (Throughput)                  │ {throughput_rps:>6.2f} req/s                      │")
-    print(f"  │ 6. Độ trễ trung vị P50 (Latency P50 / Median)      │ {p50_ms:>6.2f} ms                         │")
-    print(f"  │ 7. Độ trễ phân vị P95 (Latency P95)                │ {p95_ms:>6.2f} ms                         │")
-    print(f"  │ 8. Độ trễ phân vị P99 (Latency P99)                │ {p99_ms:>6.2f} ms                         │")
-    print(f"  │ 9. Độ trễ Trung bình / Min / Max (Avg / Min / Max) │ {avg_ms:>5.1f} / {min_ms:>4.1f} / {max_ms:>6.1f} ms         │")
+    print(f"  │ 1. Tổng số Request (Total Requests)                │ {req_summary_val:<33} │")
+    print(f"  │ 2. Tỷ lệ thành công (Success Rate %)               │ {succ_summary_val:<33} │")
+    print(f"  │ 3. Số lỗi máy chủ HTTP 5xx (HTTP 5xx Count)        │ {err_summary_val:<33} │")
+    print(f"  │ 4. Thời gian hoàn tất (Total Wall Time)            │ {wall_summary_val:<33} │")
+    print(f"  │ 5. Thông lượng xử lý (Throughput)                  │ {tps_summary_val:<33} │")
+    print(f"  │ 6. Độ trễ trung vị P50 (Latency P50 / Median)      │ {p50_summary_val:<33} │")
+    print(f"  │ 7. Độ trễ phân vị P95 (Latency P95)                │ {p95_summary_val:<33} │")
+    print(f"  │ 8. Độ trễ phân vị P99 (Latency P99)                │ {p99_summary_val:<33} │")
+    print(f"  │ 9. Độ trễ Trung bình / Min / Max (Avg / Min / Max) │ {lat_summary_val:<33} │")
     print(f"  └────────────────────────────────────────────────────┴───────────────────────────────────┘")
 
-    print("\n" + "=" * 92)
+    print("\n" + "=" * 96)
     print("⚖️ BẢNG 2: PHÂN BỔ TẢI QUA CÁC NHÁNH REPLICA (MULTI-AZ LOAD BALANCING DISTRIBUTION)")
-    print("=" * 92)
+    print("=" * 96)
     print(f"  ┌──────────────────────────────┬────────────┬────────────┬───────────────────────────────┐")
     print(f"  │ Nhánh xử lý (Serving Node)   │ Số Request │ Tỷ lệ (%)  │ Biểu đồ phân tải (Load Bar)   │")
     print(f"  ├──────────────────────────────┼────────────┼────────────┼───────────────────────────────┤")
@@ -863,14 +851,15 @@ def run_benchmark(
         bar = format_bar(ratio, width=24)
         print(f"  │ {node_name:<28} │ {cnt:>10} │ {ratio*100:>8.2f}%  │ {bar:<29} │")
     print(f"  └──────────────────────────────┴────────────┴────────────┴───────────────────────────────┘")
-    print(
-        f"  👉 Đối chiếu Multi-AZ: app-replica-1 (AZ-a) = {replica_1_count} reqs ({replica_1_count/total_executed*100:.1f}%) | "
-        f"app-replica-2 (AZ-b) = {replica_2_count} reqs ({replica_2_count/total_executed*100:.1f}%)"
-    )
+    if replica_1_count + replica_2_count > 0:
+        print(
+            f"  👉 Đối chiếu Multi-AZ: app-replica-1 (AZ-a) = {replica_1_count} reqs ({replica_1_count/total_executed*100:.1f}%) | "
+            f"app-replica-2 (AZ-b) = {replica_2_count} reqs ({replica_2_count/total_executed*100:.1f}%)"
+        )
 
-    print("\n" + "=" * 92)
-    print("🔒 BẢNG 3: KIỂM ĐỊNH TOÀN VẸN TỒN KHO ACID (ACID STOCK INTEGRITY & ZERO OVERSELLING)")
-    print("=" * 92)
+    print("\n" + "=" * 96)
+    print("🔒 BẢNG 3: KIỂM ĐỊNH TOÀN VẸN TỒN KHO ACID & ZERO OVERSELLING (stock_before - 100 == stock_after)")
+    print("=" * 96)
     print(f"  ┌────────┬──────────────┬────────────────────────────────────┬──────────┬──────────┬──────────┬──────────┐")
     print(f"  │ ID     │ Mã SKU       │ Tên cấu hình Flagship PC           │ Tồn đầu  │ Đã bán   │ Kỳ vọng  │ Tồn cuối │")
     print(f"  ├────────┼──────────────┼────────────────────────────────────┼──────────┼──────────┼──────────┼──────────┤")
@@ -889,16 +878,19 @@ def run_benchmark(
     )
     print(f"  └────────────────────────────────────────────────────────────┴──────────┴──────────┴──────────┴──────────┘")
 
-    acid_badge = "✅ PASS (ĐẠT CHUẨN ACID 100%)" if acid_overall_pass else "❌ FAIL (SAI LỆCH TỒN KHO)"
-    oversell_badge = "✅ ZERO OVERSELLING (Không âm kho)" if zero_overselling_holds else "❌ OVERSELLING DETECTED"
-    print(f"  • Phương trình bảo toàn tồn kho : stock_before ({total_stock_before}) - successful_orders ({successful_orders}) == stock_after ({total_stock_after})")
-    print(f"  • Số giao dịch ACID Rollback    : {acid_rollbacks} (HTTP 400 khi hết hàng - bảo vệ an toàn tồn kho)")
-    print(f"  • Tồn kho thấp nhất ghi nhận    : {min_stock_after} máy (>= 0) -> {oversell_badge}")
-    print(f"  • Kết luận toàn vẹn dữ liệu     : {acid_badge}")
+    zero_oversell_status = f"✅ PASS (stock_before - {write_requests} == stock_after)" if stock_decremented_by_100 else "❌ FAIL"
+    oversell_badge = "✅ ZERO OVERSELLING (Không bán âm kho, min_stock >= 0)" if zero_overselling_holds else "❌ OVERSELLING DETECTED"
+    acid_badge = "✅ PASS (ĐẠT CHUẨN TOÀN VẸN ACID 100%)" if acid_overall_pass else "❌ FAIL (SAI LỆCH TỒN KHO)"
 
-    print("\n" + "=" * 92)
+    print(f"  • Kiểm định Zero Overselling   : stock_before ({total_stock_before}) - {write_requests} == stock_after ({total_stock_after}) -> {zero_oversell_status}")
+    print(f"  • Số đơn hàng commit thành công: {successful_orders}/{write_requests} đơn (Mỗi đơn số lượng 1 máy)")
+    print(f"  • Số giao dịch ACID Rollback   : {acid_rollbacks} (HTTP 400 khi hết hàng - bảo vệ an toàn tồn kho)")
+    print(f"  • Tồn kho thấp nhất ghi nhận   : {min_stock_after} máy (>= 0) -> {oversell_badge}")
+    print(f"  • Kết luận toàn vẹn dữ liệu    : {acid_badge}")
+
+    print("\n" + "=" * 96)
     print("📡 BẢNG 4: CHI TIẾT ĐỘ TRỄ THEO TỪNG ENDPOINT (PER-ENDPOINT LATENCY BREAKDOWN)")
-    print("=" * 92)
+    print("=" * 96)
     print(f"  ┌───────────────────────────────┬────────┬──────────┬──────────┬──────────┬──────────┬──────────┐")
     print(f"  │ Endpoint                      │ Số lượng│ HTTP 2xx │ HTTP 4xx │ HTTP 5xx │ P50 (ms) │ P95 (ms) │")
     print(f"  ├───────────────────────────────┼────────┼──────────┼──────────┼──────────┼──────────┼──────────┤")
@@ -914,10 +906,11 @@ def run_benchmark(
             f"{c_5xx:>8} │ {ep_p50:>8.2f} │ {ep_p95:>8.2f} │"
         )
     print(f"  └───────────────────────────────┴────────┴──────────┴──────────┴──────────┴──────────┴──────────┘")
-    print("=" * 92)
+    print("=" * 96)
 
     summary_payload = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "test_suite": "Shopee Mall Flash Sale 500 Concurrent Load Test",
         "target_url": base_url,
         "total_requests": total_executed,
         "read_requests": read_requests,
@@ -949,9 +942,10 @@ def run_benchmark(
             "acid_rollbacks": acid_rollbacks,
             "expected_stock_after": expected_stock_after,
             "stock_after": total_stock_after,
-            "equation_verified": stock_equation_holds,
-            "min_stock_after": min_stock_after,
+            "stock_decremented_by_100": stock_decremented_by_100,
             "zero_overselling": zero_overselling_holds,
+            "min_stock_after": min_stock_after,
+            "equation_verified": stock_equation_holds,
             "overall_pass": acid_overall_pass,
             "per_product": per_product_audit,
         },
@@ -973,7 +967,7 @@ def run_benchmark(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="🐝 TTGShop Well-Architected V2 — Kịch bản kiểm thử tải 500 Concurrent Requests & ACID Stock Verifier"
+        description="🛍️ TTGShop Shopee Mall Edition — Kịch bản kiểm thử tải 500 Concurrent Requests & ACID Stock Verifier"
     )
     parser.add_argument(
         "--url",
@@ -992,7 +986,7 @@ def parse_args() -> argparse.Namespace:
         "--reads",
         type=int,
         default=READ_REQUESTS_DEFAULT,
-        help="Số lượng request đọc Catalog/Health/Telemetry (mặc định: 400)",
+        help="Số lượng request đọc Catalog/Health/Mall-Brands/Orders (mặc định: 400)",
     )
     parser.add_argument(
         "--writes",
@@ -1024,7 +1018,7 @@ def main() -> int:
     args = parse_args()
     if args.show_profiles:
         print("=" * 80)
-        print("🐝 LOCUST & K6 LOAD PROFILES (OPTIONAL REFERENCE)")
+        print("🛍️ LOCUST & K6 LOAD PROFILES (SHOPEE MALL EDITION)")
         print("=" * 80)
         print(LOCUST_PROFILE_SNIPPET)
         print("-" * 80)

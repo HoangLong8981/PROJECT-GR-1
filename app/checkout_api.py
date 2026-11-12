@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-TTGShop / Apple Studio Store E-Commerce Well-Architected V2
-Multi-Item ACID Checkout, Hardware Lineup Comparison & Telemetry API
-Owned by: Worker 2 (@api-backend)
+Shopee Mall Vietnam E-Commerce Well-Architected V2
+Multi-Item ACID Checkout, Shopee Mall Brands, Hardware Comparison & Swarm Telemetry API
+Owned by: Worker 2 (@shopee-backend)
 """
 
 import os
@@ -28,42 +28,170 @@ router = APIRouter()
 SWARM_TELEMETRY_LOG: deque = deque(maxlen=30)
 _telemetry_lock = threading.Lock()
 
-# Supported promotional discount codes (VND)
+# Supported Shopee promotional discount vouchers (VND)
 PROMO_DISCOUNTS: Dict[str, float] = {
-    "APPLE2026": 1_500_000.0,
+    "SHOPEE2026": 1_500_000.0,
+    "SHOPEE500K": 500_000.0,
     "UTH2026": 1_000_000.0,
     "TTG500K": 500_000.0,
+    "APPLE2026": 1_500_000.0,  # Retained for backward compatibility
 }
 
-# Supported payment methods for Apple Store & TTGShop Checkout
+PROMO_METADATA: List[Dict[str, Any]] = [
+    {
+        "code": "SHOPEE2026",
+        "discount": 1_500_000.0,
+        "label": "Giảm 1.500.000đ - Shopee Voucher Siêu Sale 2026",
+        "min_order": 10_000_000.0,
+        "badge": "VOUCHER HOT",
+    },
+    {
+        "code": "SHOPEE500K",
+        "discount": 500_000.0,
+        "label": "Giảm 500.000đ - Voucher Điện Tử Shopee Mall",
+        "min_order": 5_000_000.0,
+        "badge": "MALL VOUCHER",
+    },
+    {
+        "code": "UTH2026",
+        "discount": 1_000_000.0,
+        "label": "Giảm 1.000.000đ - UTH Cloud Well-Architected",
+        "min_order": 5_000_000.0,
+        "badge": "CLOUD ARCH",
+    },
+    {
+        "code": "TTG500K",
+        "discount": 500_000.0,
+        "label": "Giảm 500.000đ - Ưu đãi thành viên TTGShop",
+        "min_order": 3_000_000.0,
+        "badge": "THÀNH VIÊN",
+    },
+    {
+        "code": "APPLE2026",
+        "discount": 1_500_000.0,
+        "label": "Giảm 1.500.000đ - Apple Authorised Reseller",
+        "min_order": 10_000_000.0,
+        "badge": "AAR",
+    },
+]
+
+# Supported payment methods for Shopee Mall Checkout
 SUPPORTED_PAYMENT_METHODS: List[str] = [
+    "Ví ShopeePay",
     "Apple Pay",
     "Chuyển khoản VietQR 24/7",
-    "COD - Thanh toán khi nhận máy",
-    "Trả góp 0% qua thẻ tín dụng",
+    "COD - Thanh toán khi nhận hàng",
+    "Trả góp 0%",
 ]
 
 PAYMENT_METHOD_ALIASES: Dict[str, str] = {
+    "ví shopeepay": "Ví ShopeePay",
+    "vi shopeepay": "Ví ShopeePay",
+    "shopeepay": "Ví ShopeePay",
+    "shopee pay": "Ví ShopeePay",
+    "shopee_pay": "Ví ShopeePay",
     "apple pay": "Apple Pay",
     "applepay": "Apple Pay",
     "apple_pay": "Apple Pay",
     "vietqr": "Chuyển khoản VietQR 24/7",
     "vietqr 24/7": "Chuyển khoản VietQR 24/7",
     "chuyển khoản vietqr 24/7": "Chuyển khoản VietQR 24/7",
-    "cod": "COD - Thanh toán khi nhận máy",
-    "cod - thanh toán khi nhận máy": "COD - Thanh toán khi nhận máy",
-    "trả góp 0%": "Trả góp 0% qua thẻ tín dụng",
-    "trả góp 0% qua thẻ tín dụng": "Trả góp 0% qua thẻ tín dụng",
+    "chuyen khoan vietqr 24/7": "Chuyển khoản VietQR 24/7",
+    "chuyển khoản vietqr": "Chuyển khoản VietQR 24/7",
+    "vietqr24/7": "Chuyển khoản VietQR 24/7",
+    "cod": "COD - Thanh toán khi nhận hàng",
+    "cod - thanh toán khi nhận hàng": "COD - Thanh toán khi nhận hàng",
+    "cod - thanh toán khi nhận máy": "COD - Thanh toán khi nhận hàng",
+    "thanh toán khi nhận hàng": "COD - Thanh toán khi nhận hàng",
+    "trả góp 0%": "Trả góp 0%",
+    "tra gop 0%": "Trả góp 0%",
+    "trả góp": "Trả góp 0%",
+    "trả góp 0% qua thẻ tín dụng": "Trả góp 0%",
 }
 
-APPLE_FINISHES: List[Dict[str, str]] = [
-    {"name": "Space Black", "hex": "#2e2c2e"},
-    {"name": "Silver", "hex": "#e3e4e5"},
-    {"name": "Sky Blue", "hex": "#c8d8e4"},
-    {"name": "Starlight", "hex": "#f0e4d3"},
+# Shopee Mall Flagship Brands
+SHOPEE_MALL_BRANDS: List[Dict[str, Any]] = [
+    {
+        "id": 1,
+        "name": "Samsung",
+        "official_name": "Samsung Official Store",
+        "slug": "samsung",
+        "tagline": "Ưu đãi đến 50% • Voucher 1 Triệu",
+        "badge": "Shopee Mall",
+        "logo_text": "SAMSUNG",
+        "logo_url": "/static/shopee_assets/brands/samsung.png",
+        "category": "Điện thoại & Thiết bị thông minh",
+        "products_count": 128,
+        "rating": 4.9,
+    },
+    {
+        "id": 2,
+        "name": "Apple Authorised Reseller",
+        "official_name": "Apple Flagship Store VN",
+        "slug": "apple",
+        "tagline": "Chính hãng 100% • Bảo hành 12T",
+        "badge": "Shopee Mall",
+        "logo_text": "Authorised Reseller Apple",
+        "logo_url": "/static/shopee_assets/brands/apple.png",
+        "category": "Máy tính bảng & Laptop Studio",
+        "products_count": 95,
+        "rating": 5.0,
+    },
+    {
+        "id": 3,
+        "name": "Oppo",
+        "official_name": "OPPO Official Store",
+        "slug": "oppo",
+        "tagline": "Chuyên gia chân dung • Trả góp 0%",
+        "badge": "Shopee Mall",
+        "logo_text": "oppo",
+        "logo_url": "/static/shopee_assets/brands/oppo.png",
+        "category": "Smartphone & Phụ kiện",
+        "products_count": 64,
+        "rating": 4.9,
+    },
+    {
+        "id": 4,
+        "name": "ShopDunk",
+        "official_name": "ShopDunk - Đại lý ủy quyền Apple",
+        "slug": "shopdunk",
+        "tagline": "Giao siêu tốc 2h • Thu cũ đổi mới",
+        "badge": "Shopee Mall",
+        "logo_text": "ShopDunk",
+        "logo_url": "/static/shopee_assets/brands/shopdunk.png",
+        "category": "Hệ sinh thái Apple & Gaming",
+        "products_count": 82,
+        "rating": 4.8,
+    },
+    {
+        "id": 5,
+        "name": "Coocaa",
+        "official_name": "Coocaa TV Official",
+        "slug": "coocaa",
+        "tagline": "Smart Google TV • Giá hủy diệt",
+        "badge": "Shopee Mall",
+        "logo_text": "coocaa",
+        "logo_url": "/static/shopee_assets/brands/coocaa.png",
+        "category": "Tivi & Thiết bị nghe nhìn",
+        "products_count": 45,
+        "rating": 4.8,
+    },
+    {
+        "id": 6,
+        "name": "SoundMax",
+        "official_name": "SoundMax Audio Official",
+        "slug": "soundmax",
+        "tagline": "Âm thanh sống động • Bảo hành 24T",
+        "badge": "Shopee Mall",
+        "logo_text": "SOUNDMAX",
+        "logo_url": "/static/shopee_assets/brands/soundmax.png",
+        "category": "Loa & Thiết bị âm thanh",
+        "products_count": 52,
+        "rating": 4.7,
+    },
 ]
 
-# Structured hardware comparison specs for the Flagship Lineup (IDs 1..8)
+# Structured hardware comparison specs for Flagship PCs (IDs 1..8)
 FLAGSHIP_LINEUP_SPECS: List[Dict[str, Any]] = [
     {
         "id": 6,
@@ -89,7 +217,7 @@ FLAGSHIP_LINEUP_SPECS: List[Dict[str, Any]] = [
         "display": "Hỗ trợ 4 màn hình 8K/4K 240Hz (DP 2.1 + HDMI 2.1b)",
         "psu_chassis": "850W 80 Plus Gold ATX 3.1 • Khung nhôm & kính Panoramic",
         "cloud_sla": "Multi-AZ Active-Active • RTO 1.46s • ACID SELECT FOR UPDATE",
-        "warranty": "Bảo hành 36 tháng tận nơi • Hỗ trợ AppleCare+ Studio",
+        "warranty": "Bảo hành 36 tháng tận nơi • Hỗ trợ kỹ thuật 24/7",
     },
     {
         "id": 5,
@@ -139,7 +267,7 @@ FLAGSHIP_LINEUP_SPECS: List[Dict[str, Any]] = [
         "display_cooling": "Tản nước AIO 240mm • Hỗ trợ 3 màn hình 4K 165Hz",
         "cooling": "Tản nhiệt nước AIO 240mm Quiet Edition",
         "display": "Hỗ trợ 3 màn hình 4K 165Hz (DP 2.1 + HDMI 2.1)",
-        "psu_chassis": "750W 80 Plus Bronze • Vỏ kính cường lực無cột",
+        "psu_chassis": "750W 80 Plus Bronze • Vỏ kính cường lực Panoramic",
         "cloud_sla": "Multi-AZ Active-Active • RTO 1.46s • ACID SELECT FOR UPDATE",
         "warranty": "Bảo hành chính hãng 36 tháng • Giao nhanh 2h",
     },
@@ -275,7 +403,6 @@ FLAGSHIP_LINEUP_SPECS: List[Dict[str, Any]] = [
     },
 ]
 
-# Fallback local lock if main module is not yet loaded
 _fallback_sqlite_lock = threading.Lock()
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 _DEFAULT_SQLITE_PATH = os.getenv("SQLITE_DB_PATH", os.path.join(_APP_DIR, "ecommerce_local.db"))
@@ -288,37 +415,37 @@ def _seed_initial_telemetry() -> None:
         {
             "timestamp": now_str,
             "iso_time": iso_str,
-            "bee": "frontend",
-            "bee_name": "Apple Store UI",
-            "event_type": "APPLE_STORE_UI_READY",
-            "message": "Khởi tạo giao diện Apple Store Vietnam (iPad / Studio PC Pro) & Bag Drawer.",
+            "bee": "shopee-ui",
+            "bee_name": "Shopee Mall UI",
+            "event_type": "SHOPEE_UI_READY",
+            "message": "Khởi tạo giao diện Shopee Mall Vietnam (Header Cam, Flash Sale, Mall Ribbon & Giỏ hàng).",
             "served_by": "app-replica-1 (AZ-a)",
             "db_lock_mode": "ACID SELECT ... FOR UPDATE",
         },
         {
             "timestamp": now_str,
             "iso_time": iso_str,
-            "bee": "backend",
+            "bee": "shopee-backend",
             "bee_name": "ACID Checkout Engine",
             "event_type": "DB_LOCK_READY",
-            "message": "Sẵn sàng khóa dòng ACID (SELECT ... FOR UPDATE / BEGIN IMMEDIATE) & mã APPLE2026.",
+            "message": "Sẵn sàng khóa dòng ACID (SELECT ... FOR UPDATE / BEGIN IMMEDIATE) & voucher SHOPEE2026/SHOPEE500K.",
             "served_by": "app-replica-1 (AZ-a)",
             "db_lock_mode": "ACID SELECT ... FOR UPDATE",
         },
         {
             "timestamp": now_str,
             "iso_time": iso_str,
-            "bee": "qa-tester",
+            "bee": "shopee-qa",
             "bee_name": "Load QA 500 Probes",
             "event_type": "LOAD_PROBES_STANDBY",
-            "message": "Sẵn sàng kịch bản 500 concurrent requests chống bán âm kho (Zero Overselling).",
+            "message": "Sẵn sàng kịch bản 500 concurrent requests Shopee Flash Sale (Zero Overselling).",
             "served_by": "app-replica-2 (AZ-b)",
             "db_lock_mode": "ACID SELECT ... FOR UPDATE",
         },
         {
             "timestamp": now_str,
             "iso_time": iso_str,
-            "bee": "reviewer",
+            "bee": "shopee-reviewer",
             "bee_name": "Security Shield",
             "event_type": "SECURITY_SHIELD_ACTIVE",
             "message": "Đã bật kiểm tra XSS Sanitization, SQL Parameter Binding & Non-Root UID 10001.",
@@ -389,8 +516,8 @@ def _sanitize_text(val: Optional[str], default: str = "", max_len: int = 250) ->
 
 
 def _normalize_payment_method(raw_payment: Optional[str]) -> str:
-    cleaned = _sanitize_text(raw_payment, default="COD - Thanh toán khi nhận máy", max_len=100)
-    lowered = cleaned.lower()
+    cleaned = _sanitize_text(raw_payment, default="Ví ShopeePay", max_len=120)
+    lowered = cleaned.lower().strip()
     if lowered in PAYMENT_METHOD_ALIASES:
         return PAYMENT_METHOD_ALIASES[lowered]
     for method in SUPPORTED_PAYMENT_METHODS:
@@ -417,14 +544,14 @@ class CheckoutItemInput(BaseModel):
 class CheckoutRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    customer_name: str = Field(default="Khách hàng Apple Studio", min_length=1, max_length=120)
+    customer_name: str = Field(default="Khách hàng Shopee Mall", min_length=1, max_length=120)
     phone: Optional[str] = Field(default="0909123456", max_length=30)
     address: Optional[str] = Field(default="TP. Hồ Chí Minh", max_length=300)
-    payment_method: Optional[str] = Field(default="Apple Pay", max_length=120)
+    payment_method: Optional[str] = Field(default="Ví ShopeePay", max_length=120)
     promo_code: Optional[str] = Field(default="", max_length=50)
     discount_code: Optional[str] = Field(default="", max_length=50)
     items: Optional[List[CheckoutItemInput]] = Field(default=None)
-    # Single-item fallback fields in case a caller posts {product_id, quantity} directly
+    # Single-item fallback fields for callers posting {product_id, quantity} directly
     product_id: Optional[int] = Field(default=None, gt=0)
     quantity: Optional[int] = Field(default=1, gt=0, le=50)
 
@@ -432,13 +559,15 @@ class CheckoutRequest(BaseModel):
 @router.post("/api/checkout", status_code=201)
 def checkout_cart(payload: CheckoutRequest, request: Request):
     """
-    Executes an atomic multi-item ACID checkout transaction:
+    Executes an atomic multi-item ACID checkout transaction for Shopee Mall:
     - PostgreSQL: `SELECT id, name, price, stock FROM products WHERE id = %s FOR UPDATE`
     - SQLite: `BEGIN IMMEDIATE` inside `sqlite_lock`
     - Locks rows in deterministic ascending `product_id` order to prevent deadlocks.
     - Validates stock for all items; rolls back the entire transaction if any item has insufficient stock.
-    - Applies promo codes (`APPLE2026` -> -1,500,000 VND; `UTH2026` -> -1,000,000 VND; `TTG500K` -> -500,000 VND).
-    - Supports payment methods (`Apple Pay`, `Chuyển khoản VietQR 24/7`, `COD - Thanh toán khi nhận máy`, `Trả góp 0% qua thẻ tín dụng`).
+    - Applies Shopee promo vouchers (`SHOPEE2026` -> -1,500,000 VND; `SHOPEE500K` -> -500,000 VND;
+      `UTH2026` -> -1,000,000 VND; `TTG500K` -> -500,000 VND; `APPLE2026` -> -1,500,000 VND).
+    - Supports payment methods: `Ví ShopeePay`, `Apple Pay`, `Chuyển khoản VietQR 24/7`,
+      `COD - Thanh toán khi nhận hàng`, `Trả góp 0%`.
     - Inserts into `orders`, decrements `products.stock`, and logs telemetry to `SWARM_TELEMETRY_LOG`.
     """
     ctx = _get_runtime_context(request)
@@ -459,12 +588,12 @@ def checkout_cart(payload: CheckoutRequest, request: Request):
     if not raw_items:
         raise HTTPException(status_code=400, detail="Giỏ hàng trống, vui lòng chọn ít nhất 1 sản phẩm")
 
-    clean_customer = _sanitize_text(payload.customer_name, default="Khách hàng Apple Studio", max_len=120)
+    clean_customer = _sanitize_text(payload.customer_name, default="Khách hàng Shopee Mall", max_len=120)
     clean_phone = _sanitize_text(payload.phone, default="0909123456", max_len=30)
     clean_address = _sanitize_text(payload.address, default="TP. Hồ Chí Minh", max_len=250)
     clean_payment = _normalize_payment_method(payload.payment_method)
     raw_promo = (payload.promo_code or payload.discount_code or "").strip().upper()
-    clean_promo = _sanitize_text(raw_promo, default="", max_len=30)
+    clean_promo = _sanitize_text(raw_promo, default="", max_len=30).upper()
 
     # Aggregate requested quantities by product_id while preserving item order
     requested_totals: Dict[int, int] = {}
@@ -475,6 +604,7 @@ def checkout_cart(payload: CheckoutRequest, request: Request):
         requested_totals[pid] = requested_totals.get(pid, 0) + qty
         normalized_items.append({"product_id": pid, "quantity": qty})
 
+    # Sort product_ids ascending to guarantee deterministic lock acquisition and prevent deadlock
     sorted_pids = sorted(requested_totals.keys())
     order_ids: List[int] = []
     items_processed: List[Dict[str, Any]] = []
@@ -498,6 +628,7 @@ def checkout_cart(payload: CheckoutRequest, request: Request):
                         raise HTTPException(status_code=404, detail=f"Sản phẩm #{pid} không tồn tại")
                     locked_products[pid] = dict(prod)
 
+                # Validate stock sufficiency across all items
                 for pid, req_qty in requested_totals.items():
                     prod = locked_products[pid]
                     if int(prod["stock"]) < req_qty:
@@ -507,6 +638,7 @@ def checkout_cart(payload: CheckoutRequest, request: Request):
                             detail=f"Sản phẩm '{prod['name']}' đã hết hoặc không đủ tồn kho (còn {prod['stock']}, yêu cầu {req_qty})"
                         )
 
+                # Compute totals
                 for entry in normalized_items:
                     pid = entry["product_id"]
                     qty = entry["quantity"]
@@ -517,6 +649,7 @@ def checkout_cart(payload: CheckoutRequest, request: Request):
                     discount_applied = min(PROMO_DISCOUNTS[clean_promo], total_amount)
                 final_amount = max(0.0, total_amount - discount_applied)
 
+                # Update stock and record orders
                 for entry in normalized_items:
                     pid = entry["product_id"]
                     qty = entry["quantity"]
@@ -578,6 +711,7 @@ def checkout_cart(payload: CheckoutRequest, request: Request):
                         raise HTTPException(status_code=404, detail=f"Sản phẩm #{pid} không tồn tại")
                     locked_products[pid] = dict(row)
 
+                # Validate stock sufficiency across all items
                 for pid, req_qty in requested_totals.items():
                     prod = locked_products[pid]
                     if int(prod["stock"]) < req_qty:
@@ -587,6 +721,7 @@ def checkout_cart(payload: CheckoutRequest, request: Request):
                             detail=f"Sản phẩm '{prod['name']}' đã hết hoặc không đủ tồn kho (còn {prod['stock']}, yêu cầu {req_qty})"
                         )
 
+                # Compute totals
                 for entry in normalized_items:
                     pid = entry["product_id"]
                     qty = entry["quantity"]
@@ -597,6 +732,7 @@ def checkout_cart(payload: CheckoutRequest, request: Request):
                     discount_applied = min(PROMO_DISCOUNTS[clean_promo], total_amount)
                 final_amount = max(0.0, total_amount - discount_applied)
 
+                # Update stock and record orders
                 for entry in normalized_items:
                     pid = entry["product_id"]
                     qty = entry["quantity"]
@@ -648,11 +784,11 @@ def checkout_cart(payload: CheckoutRequest, request: Request):
     event_entry = {
         "timestamp": time.strftime("%H:%M:%S"),
         "iso_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "bee": "backend",
+        "bee": "shopee-backend",
         "bee_name": "ACID Checkout Engine",
         "event_type": "ACID_CHECKOUT_COMMIT",
         "message": (
-            f"[ACID COMMIT] Đơn #{','.join(str(i) for i in order_ids)} • "
+            f"[SHOPEE ACID COMMIT] Đơn #{','.join(str(i) for i in order_ids)} • "
             f"{clean_customer} • {clean_payment} • {int(final_amount):,} VNĐ • Node: {node}"
         ),
         "order_ids": order_ids,
@@ -664,7 +800,7 @@ def checkout_cart(payload: CheckoutRequest, request: Request):
         "promo_code": applied_promo,
         "payment_method": clean_payment,
         "served_by": node,
-        "db_lock_mode": "ACID SELECT ... FOR UPDATE",
+        "db_lock_mode": "ACID SELECT ... FOR UPDATE" if db_mode == "postgres" else "ACID BEGIN IMMEDIATE",
     }
     with _telemetry_lock:
         SWARM_TELEMETRY_LOG.append(event_entry)
@@ -674,7 +810,7 @@ def checkout_cart(payload: CheckoutRequest, request: Request):
 
     return {
         "status": "success",
-        "message": "Đặt hàng thành công qua giao dịch ACID!",
+        "message": "Đặt hàng thành công qua giao dịch ACID Shopee Mall!",
         "order_ids": order_ids,
         "order_id": order_ids[0] if order_ids else None,
         "customer_name": clean_customer,
@@ -689,18 +825,44 @@ def checkout_cart(payload: CheckoutRequest, request: Request):
         "product_name": first_product_name,
         "served_by": node,
         "architecture": arch_version,
-        "db_lock_mode": "ACID SELECT ... FOR UPDATE",
+        "db_lock_mode": "ACID SELECT ... FOR UPDATE" if db_mode == "postgres" else "ACID BEGIN IMMEDIATE",
         "items_processed": items_processed,
+    }
+
+
+@router.get("/api/shopee/mall-brands")
+def get_shopee_mall_brands(request: Request):
+    """
+    Returns the official Shopee Mall flagship brand partners
+    (Samsung, Apple Authorised Reseller, Oppo, ShopDunk, Coocaa, SoundMax)
+    along with active Shopee promo vouchers and supported payment methods.
+    """
+    ctx = _get_runtime_context(request)
+    node = ctx["node"]
+    arch_version = ctx["arch_version"]
+
+    return {
+        "status": "ok",
+        "title": "Shopee Mall - Thương Hiệu Chính Hãng 100%",
+        "subtitle": "Miễn phí vận chuyển • 7 ngày trả hàng miễn phí • 100% hàng chính hãng",
+        "served_by": node,
+        "architecture": arch_version,
+        "count": len(SHOPEE_MALL_BRANDS),
+        "brands": SHOPEE_MALL_BRANDS,
+        "mall_brands": SHOPEE_MALL_BRANDS,
+        "items": SHOPEE_MALL_BRANDS,
+        "promo_vouchers": PROMO_METADATA,
+        "promo_discounts": PROMO_DISCOUNTS,
+        "supported_payment_methods": SUPPORTED_PAYMENT_METHODS,
     }
 
 
 @router.get("/api/lineup/compare")
 def compare_flagship_lineup(request: Request, limit: int = 8):
     """
-    Returns structured comparison specs for the flagship PC / Studio Pro lineup
-    (CPU, GPU, RAM, SSD, Display/Cooling, Cloud SLA, Price, Live Stock, Image URL)
-    so the Apple-style "So sánh các phiên bản" section on `apple.com/vn/ipad/` UI
-    can render live hardware comparison columns.
+    Returns structured comparison specs for the flagship PC lineup
+    (CPU, GPU, RAM, SSD, Display/Cooling, Cloud SLA, Price, Live Stock, Image URL).
+    Maintained for backward compatibility and comparison drawers.
     """
     safe_limit = max(1, min(int(limit), 8))
     ctx = _get_runtime_context(request)
@@ -760,7 +922,6 @@ def compare_flagship_lineup(request: Request, limit: int = 8):
 
         monthly = int(round(item["price"] / 24.0, -3))
         item["monthly_installment"] = f"Từ {monthly:,}đ/tháng với trả góp 0%".replace(",", ".")
-        item["finishes"] = APPLE_FINISHES
         item["specs"] = {
             "cpu": item["cpu"],
             "gpu": item["gpu"],
@@ -776,35 +937,31 @@ def compare_flagship_lineup(request: Request, limit: int = 8):
         comparison_models.append(item)
 
     spec_categories = [
-        {"key": "cpu", "label": "Vi xử lý (CPU & Neural Engine)"},
+        {"key": "cpu", "label": "Vi xử lý (CPU & AI Boost)"},
         {"key": "gpu", "label": "Đồ họa (GPU RTX 50 Series)"},
-        {"key": "ram", "label": "Bộ nhớ hợp nhất / RAM"},
-        {"key": "ssd", "label": "Lưu trữ Flash NVMe SSD"},
+        {"key": "ram", "label": "Bộ nhớ RAM DDR5 High-Speed"},
+        {"key": "ssd", "label": "Lưu trữ Flash NVMe Gen4 SSD"},
         {"key": "display_cooling", "label": "Màn hình hỗ trợ & Tản nhiệt"},
-        {"key": "psu_chassis", "label": "Nguồn & Khung vỏ Studio"},
+        {"key": "psu_chassis", "label": "Nguồn & Khung vỏ Case Panoramic"},
         {"key": "cloud_sla", "label": "Hạ tầng Cloud & Bảo toàn kho ACID"},
-        {"key": "warranty", "label": "Bảo hành & Dịch vụ Apple Studio"},
+        {"key": "warranty", "label": "Bảo hành & Hỗ trợ kỹ thuật 24/7"},
     ]
 
     return {
         "status": "ok",
-        "title": "So sánh các phiên bản Studio PC & Gaming Pro.",
+        "title": "So sánh các phiên bản PC Gaming & Shopee Mall.",
         "subtitle": "Khám phá cấu hình phù hợp nhất với nhu cầu đồ họa, AI và eSports của bạn.",
         "served_by": node,
         "architecture": arch_version,
         "database_engine": db_mode,
-        "db_lock_mode": "ACID SELECT ... FOR UPDATE",
+        "db_lock_mode": "ACID SELECT ... FOR UPDATE" if db_mode == "postgres" else "ACID BEGIN IMMEDIATE",
         "count": len(comparison_models),
         "items": comparison_models,
         "lineup": comparison_models,
         "models": comparison_models,
         "featured_4": comparison_models[:4],
         "spec_categories": spec_categories,
-        "promo_codes": [
-            {"code": "APPLE2026", "discount": 1_500_000.0, "label": "Giảm 1.500.000đ ưu đãi Apple Studio 2026"},
-            {"code": "UTH2026", "discount": 1_000_000.0, "label": "Giảm 1.000.000đ ưu đãi Cloud Well-Architected"},
-            {"code": "TTG500K", "discount": 500_000.0, "label": "Giảm 500.000đ ưu đãi thành viên TTG"},
-        ],
+        "promo_codes": PROMO_METADATA,
         "payment_methods": SUPPORTED_PAYMENT_METHODS,
     }
 
@@ -812,7 +969,7 @@ def compare_flagship_lineup(request: Request, limit: int = 8):
 @router.get("/api/orders/recent")
 def get_recent_orders(request: Request, limit: int = 10):
     """
-    Returns the 10 most recent orders from the `orders` table + total orders count.
+    Returns the most recent orders from the `orders` table + total orders count.
     """
     safe_limit = max(1, min(int(limit), 50))
     ctx = _get_runtime_context(request)
@@ -890,7 +1047,7 @@ def get_recent_orders(request: Request, limit: int = 10):
 @router.get("/api/swarm/telemetry")
 def get_swarm_telemetry(request: Request):
     """
-    Returns live backend metrics, promo codes, and recent ACID activity logs.
+    Returns live backend metrics, Shopee vouchers, and recent ACID checkout logs.
     """
     ctx = _get_runtime_context(request)
     node = ctx["node"]
@@ -930,43 +1087,44 @@ def get_swarm_telemetry(request: Request):
     return {
         "status": "ok",
         "active_bees": 4,
-        "db_lock_mode": "ACID SELECT ... FOR UPDATE",
+        "db_lock_mode": "ACID SELECT ... FOR UPDATE" if db_mode == "postgres" else "ACID BEGIN IMMEDIATE",
         "database_engine": db_mode,
         "served_by": node,
         "architecture": arch_version,
         "total_orders": total_orders,
         "total_stock_remaining": total_stock,
         "promo_discounts": PROMO_DISCOUNTS,
+        "promo_vouchers": PROMO_METADATA,
         "supported_payment_methods": SUPPORTED_PAYMENT_METHODS,
         "recent_events": events_snapshot,
         "bees": [
             {
-                "id": "ui-frontend",
-                "name": "Apple Store UI",
-                "color": "#0071e3",
+                "id": "shopee-ui",
+                "name": "Shopee Mall UI",
+                "color": "#ee4d2d",
                 "status": "ACTIVE",
-                "task": "Giao diện Apple Store Vietnam, Bag Drawer & Lineup Compare",
+                "task": "Shopee Orange Header, Flash Sale, Mall Ribbon & Cart Drawer",
             },
             {
-                "id": "api-backend",
+                "id": "shopee-backend",
                 "name": "ACID Checkout Engine",
                 "color": "#10b981",
                 "status": "ACTIVE",
-                "task": "Khóa dòng dữ liệu ACID (SELECT ... FOR UPDATE) & APPLE2026",
+                "task": "Khóa dòng ACID (SELECT ... FOR UPDATE) & Mã Shopee Voucher",
             },
             {
-                "id": "load-qa",
+                "id": "shopee-qa",
                 "name": "Load QA 500 Probes",
                 "color": "#f59e0b",
                 "status": "ACTIVE",
-                "task": "Kiểm thử tải 500 request & chống bán âm kho",
+                "task": "Kiểm thử tải 500 requests & kiểm định không bán âm kho",
             },
             {
-                "id": "sec-reviewer",
-                "name": "Security Shield",
+                "id": "shopee-reviewer",
+                "name": "Security & Code Reviewer",
                 "color": "#a855f7",
                 "status": "ACTIVE",
-                "task": "Thẩm định bảo mật XSS, SQLi & UID 10001",
+                "task": "Thẩm định bảo mật XSS, SQLi, ACID integrity & Non-Root UID 10001",
             },
         ],
     }
