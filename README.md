@@ -150,6 +150,76 @@ python .\tests\generate_benchmark_and_tco.py
 
 ---
 
+### Bước 5: Chạy website trực tiếp trên Windows bằng Python (không cần Docker)
+
+Ngoài phương pháp triển khai bằng Docker Compose, dự án hỗ trợ chạy website TTGShop trực tiếp trên Windows bằng Python để kiểm tra giao diện, API và chức năng đặt hàng.
+
+#### 5.1. Yêu cầu cài đặt
+
+- Windows 10/11.
+- Python 3.12 (64-bit).
+- Visual Studio Code.
+- Git để quản lý mã nguồn.
+
+#### 5.2. Tạo môi trường ảo
+
+Mở Terminal tại thư mục gốc `PROJECT-GR-1`:
+
+```powershell
+py -3.12 --version
+py -3.12 -m venv .venv312
+.\.venv312\Scripts\Activate.ps1
+```
+
+Khi kích hoạt thành công, Terminal sẽ xuất hiện tiền tố `(.venv312)`.
+
+#### 5.3. Cài đặt thư viện
+
+```powershell
+python -m pip install --upgrade pip
+python -m pip install -r app/requirements.txt
+```
+
+#### 5.4. Khởi chạy website
+
+Thiết lập SQLite cho môi trường demo cục bộ:
+
+```powershell
+$env:DB_ENGINE="sqlite"
+python run_demo_local.py
+```
+
+Truy cập các địa chỉ:
+
+| Chức năng | Địa chỉ |
+|---|---|
+| Website TTGShop | http://localhost:8000 |
+| API Documentation | http://localhost:8000/docs |
+| Health Check | http://localhost:8000/health |
+| Prometheus Metrics | http://localhost:8000/metrics |
+
+Nhấn `Ctrl + C` trong Terminal để dừng server.
+
+**Lưu ý:** Chế độ Python sử dụng SQLite và mô phỏng một số hành vi phân phối tải. Để kiểm thử kiến trúc V1/V2 thực tế, cần triển khai bằng Docker Compose theo hướng dẫn phía trên.
+
+#### 5.5. Xử lý lỗi thường gặp
+
+| Lỗi | Nguyên nhân / Cách xử lý |
+|---|---|
+| `No module named fastapi` | Kích hoạt môi trường ảo và cài thư viện từ `app/requirements.txt`. |
+| `Failed building wheel for psycopg2-binary` | Kiểm tra phiên bản Python, ưu tiên Python 3.12 theo cấu hình dự án. |
+| Không kích hoạt được `.venv312` | Kiểm tra thư mục môi trường ảo và quyền thực thi PowerShell. |
+| `Address already in use` | Cổng 8000 đang được chương trình khác sử dụng. |
+| Website không hiển thị ảnh | Kiểm tra tài nguyên trong `app/static/ttg_assets/`. |
+| Không kết nối PostgreSQL | Sử dụng `DB_ENGINE=sqlite` khi chạy demo cục bộ không có PostgreSQL. |
+
+#### 5.6. Phạm vi sử dụng
+
+- **Python Local:** Phù hợp kiểm tra giao diện TTGShop, chức năng sản phẩm, đặt hàng và API.
+- **Docker V1:** Kiểm tra hệ thống kiến trúc cơ sở.
+- **Docker V2:** Kiểm tra hệ thống phân tầng có Load Balancer và các bản sao ứng dụng.
+- **Grafana k6:** Đánh giá hiệu năng, thông lượng và độ trễ giữa V1/V2.
+  
 ## 6. Kết quả Thực nghiệm & Phân tích Chi phí (TCO)
 
 ### 6.1. Bảng so sánh Hiệu năng & Khả năng phục hồi (Trung bình sau n = 5 lần lặp)
