@@ -6,7 +6,7 @@
 # =============================================================================
 
 services:
-  # Trong kiến trúc V1, ứng dụng và CSDL chia sẻ tài nguyên hạn chế và không có LB
+  
   postgres-v1:
     image: postgres:16-alpine
     container_name: ecom-v1-db
