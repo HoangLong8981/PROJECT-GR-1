@@ -263,4 +263,3 @@ docker compose -f infra/docker-compose.v2.yml down -v --remove-orphans
 docker compose -f infra/docker-compose.v1.yml down -v --remove-orphans
 ```
 # PROJECT-GR-1
-# PROJECT-GR-1
