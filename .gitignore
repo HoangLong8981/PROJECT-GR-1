@@ -3,7 +3,7 @@
 *.pem
 *.key
 
-# Python cache
+# Python cache & Môi trường ảo
 __pycache__/
 *.py[cod]
 .venv/
@@ -15,15 +15,14 @@ minio_data/
 prometheus_data/
 grafana_data/
 
-# IDE
+# IDE & Hệ điều hành
 .vscode/
 .idea/
+Thumbs.db
+.DS_Store
 
-PROJECT-GR-1/
+# Logs & Database cục bộ
 *.log
-
-
 *.db
 *.db-wal
 *.db-shm
-
